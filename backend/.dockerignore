@@ -1,0 +1,12 @@
+.venv/
+.env
+*.db
+*.db-*
+storage/
+data/samples/
+tests/
+**/__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+env.cloud.yaml
