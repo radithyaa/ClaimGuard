@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { CheckCircle2, Loader2, Video } from "lucide-react";
 import { useRef } from "react";
 
+import { ConfidenceLabel } from "@/components/ui/confidence";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api, USE_MOCK } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
@@ -105,9 +106,9 @@ export function EvidencePanel({ evidence, analyzing }: { evidence: Evidence[]; a
               </li>
             ))}
             {a?.confidence != null && (
-              <li className="mt-1 flex justify-between rounded-lg border p-3 text-sm">
+              <li className="mt-1 flex items-center justify-between rounded-lg border p-3 text-sm">
                 <span>Keyakinan analisis visual</span>
-                <span className="font-medium tabular-nums">{Math.round(a.confidence * 100)}%</span>
+                <ConfidenceLabel value={a.confidence} />
               </li>
             )}
           </ol>

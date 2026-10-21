@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
+import { CASE_LABEL } from "@/components/shipments/status-badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SimulatedBadge } from "@/components/ui/simulated-badge";
@@ -14,11 +15,12 @@ import { EmptyState, ErrorState } from "@/components/ui/states";
 import { api } from "@/lib/api-client";
 import { COURIER_LABEL, formatDate, formatRupiah } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import type { ClaimSummary } from "@/types/api";
+import type { CaseType, ClaimSummary } from "@/types/api";
 
 // Perkiraan waktu admin per klaim manual (belum divalidasi, sama dengan desain)
 const MINUTES_PER_CLAIM = 20;
 const ALL = "all";
+const CASE_ORDER: (CaseType | "unknown")[] = ["lost", "damaged", "return_fraud", "unknown"];
 
 const monthKey = (iso: string) =>
   new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", timeZone: "Asia/Jakarta" }).format(new Date(iso));
@@ -70,8 +72,8 @@ export default function RecoveryReportPage() {
 
   function exportCsv() {
     const rows = [
-      ["id_kasus", "resi", "kurir", "status", "nilai_klaim", "dibuat", "simulasi"],
-      ...claims.map((c) => [c.id, c.tracking_number, courierName(c.courier), c.status, c.claim_value, c.created_at, c.is_simulated]),
+      ["id_kasus", "resi", "kurir", "jenis_kasus", "status", "nilai_klaim", "dibuat", "simulasi"],
+      ...claims.map((c) => [c.id, c.tracking_number, courierName(c.courier), c.case_type ?? "", c.status, c.claim_value, c.created_at, c.is_simulated]),
     ];
     const csv = rows.map((row) => row.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
     const url = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" }));
@@ -185,18 +187,24 @@ export default function RecoveryReportPage() {
             </section>
 
             <section className="rounded-xl border bg-card p-5">
-              <h2 className="text-xl font-semibold">Per status</h2>
-              <p className="mb-3 text-sm text-muted-foreground">Distribusi nilai klaim periode ini</p>
+              <h2 className="text-xl font-semibold">Per jenis kasus</h2>
+              <p className="mb-3 text-sm text-muted-foreground">Nilai klaim terkirim dan tingkat keberhasilan per jenis</p>
               <ul className="divide-y">
-                {(["submitted", "pending_approval", "rejected"] as const).map((s) => {
-                  const rows = claims.filter((c) => c.status === s);
+                {CASE_ORDER.map((type) => {
+                  const rows = claims.filter((c) => (c.case_type ?? "unknown") === type);
+                  if (!rows.length) return null;
+                  const sent = rows.filter((c) => c.status === "submitted");
+                  const decided = rows.filter((c) => c.status !== "pending_approval").length;
                   return (
-                    <li key={s} className="flex items-center justify-between py-3">
+                    <li key={type} className="flex items-center justify-between gap-3 py-3">
                       <div>
-                        <p className="flex items-center gap-2"><span className={cn("size-2 rounded-full", s === "submitted" ? "bg-success" : s === "rejected" ? "bg-destructive" : "bg-info")} />{STATUS[s].label}</p>
-                        <p className="text-[13px] text-muted-foreground">{rows.length} klaim</p>
+                        <p>{type === "unknown" ? "Belum tercatat" : CASE_LABEL[type]}</p>
+                        <p className="text-[13px] text-muted-foreground">
+                          {rows.length} klaim · {sent.length} terkirim
+                          {decided ? ` · ${Math.round((sent.length / decided) * 100)}% berhasil` : ""}
+                        </p>
                       </div>
-                      <span className="tabular-nums">{formatRupiah(rows.reduce((n, c) => n + c.claim_value, 0))}</span>
+                      <span className="tabular-nums">{formatRupiah(sent.reduce((n, c) => n + c.claim_value, 0))}</span>
                     </li>
                   );
                 })}

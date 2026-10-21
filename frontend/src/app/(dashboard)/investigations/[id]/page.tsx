@@ -21,6 +21,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ConfidenceLabel } from "@/components/ui/confidence";
 import { SimulatedBadge } from "@/components/ui/simulated-badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorState } from "@/components/ui/states";
@@ -272,7 +273,7 @@ function DecisionCard({ v, events, claimId }: { v: InvestigationView; events: In
           )}{" "}
           {title}
         </h2>
-        <span className="rounded-md border px-2 py-0.5 font-mono text-[13px]">{Math.round(confidence * 100)}% yakin</span>
+        <span className="flex items-center gap-1.5 text-[13px] text-muted-foreground">Keyakinan <ConfidenceLabel value={confidence} /></span>
       </div>
       <p className="font-semibold">{verdict}</p>
       {reason && <p className="mt-1 text-sm text-muted-foreground">{reason}</p>}

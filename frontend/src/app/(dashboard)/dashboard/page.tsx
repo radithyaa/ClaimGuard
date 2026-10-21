@@ -5,13 +5,15 @@ import { ArrowRight, Info, Zap } from "lucide-react";
 import Link from "next/link";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
+import { ClaimDeadline, deadlineUrgency } from "@/components/claims/claim-deadline";
 import { Button } from "@/components/ui/button";
+import { ConfidenceLabel } from "@/components/ui/confidence";
 import { ScanButton } from "@/components/shipments/scan-button";
 import { SimulatedBadge } from "@/components/ui/simulated-badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { api } from "@/lib/api-client";
-import { COURIER_LABEL, formatDate, formatRelative, formatRupiah } from "@/lib/format";
+import { COURIER_LABEL, formatDate, formatRupiah } from "@/lib/format";
 import type { AuditLog, ClaimSummary } from "@/types/api";
 
 const TARGET_SEC = 30;
@@ -35,12 +37,6 @@ const ACTION_LABEL: Record<string, string> = {
   settings_updated: "mengubah pengaturan",
 };
 
-function confidenceLabel(c: number | null) {
-  if (c === null) return { text: "Bukti kurang", cls: "text-warning-foreground bg-warning/20" };
-  if (c >= 0.8) return { text: "Tinggi", cls: "text-success bg-success/10" };
-  if (c >= 0.6) return { text: "Sedang", cls: "text-info bg-info/10" };
-  return { text: "Rendah", cls: "text-destructive bg-destructive/10" };
-}
 
 function Panel({ className = "", children }: { className?: string; children: React.ReactNode }) {
   return <section className={`rounded-xl border bg-card p-5 ${className}`}>{children}</section>;
@@ -69,6 +65,7 @@ export default function DashboardPage() {
   const m = metrics.data;
   const pendingRows = pending.data?.items ?? [];
   const pendingTotal = pendingRows.reduce((n, c) => n + c.claim_value, 0);
+  const urgentCount = pendingRows.filter((c) => deadlineUrgency(c.claim_deadline) === "critical").length;
   const recovered = (submitted.data?.items ?? []).reduce((n, c) => n + c.claim_value, 0);
 
   return (
@@ -104,7 +101,7 @@ export default function DashboardPage() {
             ))
           ) : (
             <>
-              <Kpi label="Butuh keputusan Anda" value={<span className="text-primary">{m.pending_claims}</span>} sub={`Total ${formatRupiah(pendingTotal)}`}>
+              <Kpi label="Butuh keputusan Anda" value={<span className="text-primary">{m.pending_claims}</span>} sub={`Total ${formatRupiah(pendingTotal)}${urgentCount ? ` · ${urgentCount} kasus kurang dari 24 jam` : ""}`}>
                 <Link href="/claims" className="flex items-center gap-1 text-[13px] font-medium text-primary hover:underline">
                   Buka antrian <ArrowRight className="size-3.5" />
                 </Link>
@@ -121,7 +118,7 @@ export default function DashboardPage() {
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
         <Panel className="flex flex-col">
           <h2 className="text-xl font-semibold">Butuh keputusan Anda</h2>
-          <p className="mb-4 text-[13px] text-muted-foreground">Diurutkan dari klaim terlama</p>
+          <p className="mb-4 text-[13px] text-muted-foreground">Diurutkan dari sisa waktu tersingkat, lalu nilai tertinggi</p>
           <DecisionTable rows={pendingRows} loading={pending.isPending} error={pending.error?.message} onRetry={() => pending.refetch()} />
           <div className="mt-auto flex flex-wrap items-center justify-between gap-2 border-t pt-4 text-[13px] text-muted-foreground">
             <span>Tidak ada klaim yang dikirim tanpa persetujuan Anda.</span>
@@ -205,8 +202,9 @@ function DecisionTable({ rows, loading, error, onRetry }: { rows: ClaimSummary[]
   if (loading) return <div className="flex flex-col gap-2">{Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="h-12" />)}</div>;
   if (!rows.length) return <EmptyState title="Semua klaim sudah ditinjau" description="Draf klaim baru dari agen akan muncul di sini." />;
 
-  // Klaim terlama dulu: paling dekat dengan batas waktu klaim kurir
-  const sorted = [...rows].sort((a, b) => a.created_at.localeCompare(b.created_at));
+  // Sama dengan Antrian klaim (F2): tenggat terdekat dulu, lalu nilai tertinggi
+  const due = (c: ClaimSummary) => (c.claim_deadline ? new Date(c.claim_deadline).getTime() : Number.MAX_SAFE_INTEGER);
+  const sorted = [...rows].sort((a, b) => due(a) - due(b) || b.claim_value - a.claim_value);
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
@@ -215,14 +213,13 @@ function DecisionTable({ rows, loading, error, onRetry }: { rows: ClaimSummary[]
             <th className="px-2 py-2 font-medium">Kasus</th>
             <th className="px-2 py-2 font-medium">Resi &amp; kurir</th>
             <th className="px-2 py-2 text-right font-medium">Bisa diklaim</th>
-            <th className="px-2 py-2 font-medium">Dibuat</th>
+            <th className="px-2 py-2 font-medium">Sisa waktu</th>
             <th className="px-2 py-2 font-medium">Keyakinan</th>
             <th className="px-2 py-2" />
           </tr>
         </thead>
         <tbody className="divide-y">
           {sorted.map((c) => {
-            const conf = confidenceLabel(c.confidence);
             return (
               <tr key={c.id}>
                 <td className="px-2 py-3 font-medium whitespace-nowrap">{c.id.toUpperCase()}</td>
@@ -231,10 +228,8 @@ function DecisionTable({ rows, loading, error, onRetry }: { rows: ClaimSummary[]
                   <div className="text-xs text-muted-foreground">{COURIER_LABEL[c.courier] ?? c.courier}</div>
                 </td>
                 <td className="px-2 py-3 text-right tabular-nums">{formatRupiah(c.claim_value)}</td>
-                <td className="px-2 py-3 whitespace-nowrap text-muted-foreground">{formatRelative(c.created_at)}</td>
-                <td className="px-2 py-3">
-                  <span className={`rounded-md px-2 py-0.5 text-xs font-medium ${conf.cls}`}>{conf.text}</span>
-                </td>
+                <td className="px-2 py-3"><ClaimDeadline deadline={c.claim_deadline} /></td>
+                <td className="px-2 py-3"><ConfidenceLabel value={c.confidence} /></td>
                 <td className="px-2 py-3 text-right">
                   <Button asChild size="sm" variant={c.confidence === null ? "outline" : "default"}>
                     <Link href={`/claims/${c.id}`}>{c.confidence === null ? "Lengkapi" : "Tinjau"}</Link>

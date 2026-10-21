@@ -6,14 +6,18 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import { ClaimDeadline } from "@/components/claims/claim-deadline";
+import { CASE_LABEL } from "@/components/shipments/status-badge";
 import { Button } from "@/components/ui/button";
+import { ConfidenceLabel } from "@/components/ui/confidence";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SimulatedBadge } from "@/components/ui/simulated-badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { api } from "@/lib/api-client";
-import { COURIER_LABEL, formatRelative, formatRupiah } from "@/lib/format";
+import { COURIER_LABEL, formatRupiah } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import type { ClaimStatus, ClaimSummary } from "@/types/api";
+import type { CaseType, ClaimStatus, ClaimSummary } from "@/types/api";
 
 const TABS: { status: ClaimStatus | ""; label: string }[] = [
   { status: "pending_approval", label: "Butuh keputusan" },
@@ -28,23 +32,21 @@ const STATUS: Record<ClaimStatus, { label: string; cls: string }> = {
   rejected: { label: "Ditolak", cls: "bg-destructive/10 text-destructive" },
 };
 
-function Confidence({ value }: { value: number | null }) {
-  const level = value === null ? 0 : value >= 0.8 ? 3 : value >= 0.6 ? 2 : 1;
-  const label = value === null ? "Perlu dicek" : ["", "Rendah", "Sedang", "Tinggi"][level];
-  return (
-    <span className="flex items-center gap-2" title={value !== null ? `${Math.round(value * 100)}%` : undefined}>
-      <span className="flex gap-0.5" aria-hidden>
-        {[1, 2, 3].map((i) => <span key={i} className={cn("h-1.5 w-3 rounded-full", i <= level ? "bg-foreground" : "bg-muted-foreground/30")} />)}
-      </span>
-      {label}
-    </span>
-  );
+const ALL = "all";
+const BIG = Number.MAX_SAFE_INTEGER;
+
+/** F2/F8: tenggat klaim paling dekat dulu, lalu nilai tertinggi; tanpa tenggat di akhir. */
+function byUrgency(a: ClaimSummary, b: ClaimSummary) {
+  const da = a.claim_deadline ? new Date(a.claim_deadline).getTime() : BIG;
+  const db = b.claim_deadline ? new Date(b.claim_deadline).getTime() : BIG;
+  return da - db || b.claim_value - a.claim_value;
 }
 
 export default function ClaimQueuePage() {
   const router = useRouter();
   const [status, setStatus] = useState<ClaimStatus | "">("pending_approval");
   const [q, setQ] = useState("");
+  const [caseType, setCaseType] = useState<CaseType | "">("");
   const [cursor, setCursor] = useState(0);
 
   const query = useQuery({
@@ -61,9 +63,11 @@ export default function ClaimQueuePage() {
 
   // API belum punya parameter pencarian: filter di klien atas hasil tab aktif
   const term = q.trim().toLowerCase();
-  const rows = (query.data?.items ?? []).filter(
-    (c) => !term || c.id.toLowerCase().includes(term) || c.tracking_number.toLowerCase().includes(term),
-  );
+  const rows = (query.data?.items ?? [])
+    .filter((c) => !term || c.id.toLowerCase().includes(term) || c.tracking_number.toLowerCase().includes(term))
+    .filter((c) => !caseType || c.case_type === caseType)
+    // Antrian keputusan diurutkan menurut urgensi; riwayat tetap terbaru dulu (urutan API)
+    .sort((a, b) => (status === "pending_approval" ? byUrgency(a, b) : 0));
   const pending = counts[0].data;
   const pendingRows = status === "pending_approval" ? query.data?.items ?? [] : [];
   const pendingValue = pendingRows.reduce((n, c) => n + c.claim_value, 0);
@@ -117,6 +121,7 @@ export default function ClaimQueuePage() {
         })}
       </div>
 
+      <div className="flex flex-col gap-2 sm:flex-row">
       <div className="relative sm:w-80">
         <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
         <input
@@ -128,6 +133,18 @@ export default function ClaimQueuePage() {
           className="h-10 w-full rounded-lg border bg-card pr-3 pl-9 text-sm outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/30"
         />
       </div>
+      <Select value={caseType || ALL} onValueChange={(v) => { setCaseType(v === ALL ? "" : (v as CaseType)); setCursor(0); }}>
+        <SelectTrigger className="h-10! rounded-lg bg-card sm:w-52" aria-label="Filter jenis kasus">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={ALL}>Semua jenis kasus</SelectItem>
+          {Object.entries(CASE_LABEL).map(([v, label]) => (
+            <SelectItem key={v} value={v}>{label}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      </div>
 
       <section className="overflow-hidden rounded-xl border bg-card">
         {query.isError ? (
@@ -135,8 +152,8 @@ export default function ClaimQueuePage() {
         ) : query.isPending ? (
           <div className="flex flex-col gap-2 p-4">{Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="h-14" />)}</div>
         ) : rows.length === 0 ? (
-          term ? (
-            <EmptyState title="Tidak ada kasus yang cocok" description="Coba kata kunci lain." />
+          term || caseType ? (
+            <EmptyState title="Tidak ada kasus yang cocok" description="Coba kata kunci atau jenis kasus lain." />
           ) : status === "pending_approval" ? (
             <EmptyState title="Semua klaim sudah ditinjau" description="Draf klaim baru dari agen akan muncul di sini." />
           ) : (
@@ -150,7 +167,7 @@ export default function ClaimQueuePage() {
                   <th className="px-4 py-3 font-medium">Kasus</th>
                   <th className="px-4 py-3 font-medium">Resi dan kurir</th>
                   <th className="px-4 py-3 text-right font-medium">Bisa diklaim</th>
-                  <th className="px-4 py-3 font-medium">Dibuat</th>
+                  <th className="px-4 py-3 font-medium">Sisa waktu klaim</th>
                   <th className="px-4 py-3 font-medium">Keyakinan</th>
                   <th className="px-4 py-3 font-medium">Status</th>
                   <th className="px-4 py-3" />
@@ -181,14 +198,17 @@ function Row({ c, selected, onSelect }: { c: ClaimSummary; selected: boolean; on
   const pending = c.status === "pending_approval";
   return (
     <tr onClick={onSelect} className={cn("cursor-default", selected && "bg-accent/50 shadow-[inset_3px_0_0_var(--primary)]")}>
-      <td className="px-4 py-3 font-medium whitespace-nowrap">{c.id.toUpperCase()}</td>
+      <td className="px-4 py-3">
+        <div className="font-medium whitespace-nowrap">{c.id.toUpperCase()}</div>
+        {c.case_type && <div className="text-xs whitespace-nowrap text-muted-foreground">{CASE_LABEL[c.case_type]}</div>}
+      </td>
       <td className="px-4 py-3">
         <div className="font-mono text-[13px]">{c.tracking_number}</div>
         <div className="text-xs text-muted-foreground">{COURIER_LABEL[c.courier] ?? c.courier}</div>
       </td>
       <td className="px-4 py-3 text-right font-medium tabular-nums">{formatRupiah(c.claim_value)}</td>
-      <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">{formatRelative(c.created_at)}</td>
-      <td className="px-4 py-3 whitespace-nowrap"><Confidence value={c.confidence} /></td>
+      <td className="px-4 py-3">{pending ? <ClaimDeadline deadline={c.claim_deadline} /> : <span className="text-muted-foreground">—</span>}</td>
+      <td className="px-4 py-3 whitespace-nowrap"><ConfidenceLabel value={c.confidence} bars /></td>
       <td className="px-4 py-3">
         <span className={cn("rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap", STATUS[c.status].cls)}>{STATUS[c.status].label}</span>
       </td>

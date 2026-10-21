@@ -5,6 +5,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { ConfidenceLabel } from "@/components/ui/confidence";
 import {
   Dialog,
   DialogClose,
@@ -18,11 +19,6 @@ import { COURIER_LABEL, formatDateTime, formatRupiah } from "@/lib/format";
 import type { ClaimDetail } from "@/types/api";
 
 const time = new Intl.DateTimeFormat("id-ID", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Jakarta" });
-
-function confidenceLabel(c: number | null) {
-  if (c === null) return "Belum dinilai";
-  return c >= 0.8 ? "Tinggi" : c >= 0.6 ? "Sedang" : "Rendah";
-}
 
 /** Panel kanan review klaim: syarat bukti, keyakinan agen, dan aksi HITL. */
 export function ClaimActions({
@@ -124,9 +120,9 @@ export function ClaimActions({
       </div>
 
       <div className="rounded-lg bg-muted p-3 text-sm">
-        <p className="flex justify-between font-medium">
+        <p className="flex items-center justify-between font-medium">
           Tingkat keyakinan agen
-          <span>{c.confidence != null ? `${Math.round(c.confidence * 100)}% · ` : ""}{confidenceLabel(c.confidence)}</span>
+          <ConfidenceLabel value={c.confidence} />
         </p>
         {c.decision_reason && <p className="mt-1 text-muted-foreground">{c.decision_reason}</p>}
       </div>
