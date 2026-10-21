@@ -3,8 +3,10 @@ name = "claimguard-backend"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
-    "fastapi>=0.118,<0.120",
-    "uvicorn[standard]>=0.37,<0.38",
+    # google-adk 2.11.0 mensyaratkan fastapi>=0.133; pin <0.120 lama membuat
+    # resolusi dependensi mustahil (ResolutionImpossible) dan image gagal dibangun.
+    "fastapi>=0.133,<1",
+    "uvicorn[standard]>=0.37,<1",
     "pydantic>=2.11,<3",
     "pydantic-settings>=2.11,<3",
     "sqlalchemy>=2.0.44,<2.1",
