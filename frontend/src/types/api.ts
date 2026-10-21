@@ -52,7 +52,7 @@ export interface TrackingEvent {
 }
 
 export type InvestigationStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
-export type Outcome = "claim_drafted" | "needs_evidence" | "fraud_suspect";
+export type Outcome = "claim_drafted" | "needs_evidence" | "fraud_suspect" | "seller_error";
 export type ClaimStatus = "pending_approval" | "submitted" | "rejected";
 
 export interface InvestigationSummary {
@@ -231,4 +231,14 @@ export interface ClaimDetail extends ClaimSummary {
   reject_reason: string | null;
   evidence: Evidence[];
   courier_policy: CourierPolicy | null;
+}
+
+/** F6: draf permintaan bukti ke pembeli; tidak pernah dikirim otomatis. */
+export interface BuyerRequest {
+  investigation_id: string;
+  tracking_number: string;
+  courier: Courier;
+  missing_evidence: string[];
+  deadline: ISODate | null;
+  message: string;
 }

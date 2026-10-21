@@ -1,13 +1,14 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, Check, FileText, Loader2, ShieldCheck, Square, WifiOff, Zap } from "lucide-react";
+import { AlertTriangle, ArrowRight, Check, FileText, Loader2, ShieldCheck, Square, WifiOff, Zap } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { AgentSteps } from "@/components/investigation/agent-steps";
+import { BuyerRequestDialog } from "@/components/investigation/buyer-request-dialog";
 import { deriveSteps, traceLine } from "@/components/investigation/derive";
 import { EvidencePanel } from "@/components/investigation/evidence-panel";
 import { Button } from "@/components/ui/button";
@@ -168,10 +169,14 @@ export default function InvestigationPage() {
 
 function StatusPill({ events, active, claimId }: { events: InvestigationEvent[]; active: boolean; claimId: string | null }) {
   const last = events.at(-1);
+  const outcome = events.find((e) => e.type === "done")?.payload.outcome;
   const [label, cls] =
     last?.type === "error" ? ["Gagal", "bg-destructive/10 text-destructive border-destructive/30"]
     : last?.type === "cancelled" ? ["Dihentikan", "bg-muted text-muted-foreground"]
     : claimId ? ["Siap ditinjau", "bg-primary text-primary-foreground border-primary"]
+    : outcome === "seller_error" ? ["Kesalahan di pihak penjual", "bg-warning/15 border-warning/50"]
+    : outcome === "needs_evidence" ? ["Butuh bukti tambahan", "bg-warning/15 border-warning/50"]
+    : outcome === "fraud_suspect" ? ["Ketidaksesuaian terdeteksi", "bg-warning/15 border-warning/50"]
     : last?.type === "done" ? ["Selesai", "bg-success/10 text-success border-success/30"]
     : active ? ["Mengumpulkan bukti", "bg-accent text-primary border-primary/30"]
     : ["Menghubungkan", "bg-muted text-muted-foreground"];
@@ -248,11 +253,24 @@ function DecisionCard({ v, events, claimId }: { v: InvestigationView; events: In
   const confidence = (d?.confidence as number | undefined) ?? v.confidence ?? 0;
   const reason = (d?.reason as string | undefined) ?? v.decision_reason;
   const missing = (d?.missing_evidence as string[] | undefined) ?? [];
+  const decision = d?.decision as string | undefined;
+  const title = claimId
+    ? "Draf siap ditinjau"
+    : decision === "seller_error"
+      ? "Kesalahan di pihak penjual"
+      : decision === "needs_evidence"
+        ? "Butuh bukti tambahan"
+        : "Keputusan agen";
   return (
     <section className="rounded-xl border bg-card p-5">
       <div className="mb-3 flex items-center justify-between gap-2">
         <h2 className="flex items-center gap-2 text-xl font-semibold">
-          <FileText className="size-5 text-primary" aria-hidden /> {claimId ? "Draf siap ditinjau" : "Keputusan agen"}
+          {decision === "seller_error" ? (
+            <AlertTriangle className="size-5 text-warning" aria-hidden />
+          ) : (
+            <FileText className="size-5 text-primary" aria-hidden />
+          )}{" "}
+          {title}
         </h2>
         <span className="rounded-md border px-2 py-0.5 font-mono text-[13px]">{Math.round(confidence * 100)}% yakin</span>
       </div>
@@ -260,6 +278,18 @@ function DecisionCard({ v, events, claimId }: { v: InvestigationView; events: In
       {reason && <p className="mt-1 text-sm text-muted-foreground">{reason}</p>}
       {missing.length > 0 && (
         <p className="mt-3 rounded-lg border border-warning/50 bg-warning/10 p-3 text-sm">Bukti kurang: {missing.join(", ")}</p>
+      )}
+      {decision === "seller_error" && (
+        <p className="mt-3 rounded-lg border border-warning/50 bg-warning/10 p-3 text-sm">
+          Klaim ke kurir tidak diajukan. Bukti menunjukkan kesalahan terjadi saat pengemasan, jadi retur pembeli sebaiknya ditindaklanjuti
+          oleh toko.
+        </p>
+      )}
+      {decision === "needs_evidence" && events.some((e) => e.type === "done") && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t pt-3 text-sm">
+          <span className="text-muted-foreground">Lengkapi bukti sebelum batas klaim habis.</span>
+          <BuyerRequestDialog investigationId={v.id} />
+        </div>
       )}
       {claimId && (
         <div className="mt-4 flex items-center justify-between border-t pt-3 text-sm">

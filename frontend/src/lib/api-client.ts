@@ -2,6 +2,7 @@ import { clearSession, getToken, redirectToLogin } from "@/lib/auth";
 import type {
   AppSettings,
   AuditLog,
+  BuyerRequest,
   ClaimDetail,
   ClaimStatus,
   ClaimSummary,
@@ -86,7 +87,7 @@ async function request<T>(method: string, path: string, opts: { query?: Query; b
   return (res.status === 204 ? undefined : await res.json()) as T;
 }
 
-export type DemoScenario = "lost" | "damaged" | "return_fraud";
+export type DemoScenario = "lost" | "damaged" | "return_fraud" | "wrong_item_seller";
 
 export interface ShipmentQuery extends Query {
   status?: string;
@@ -112,6 +113,9 @@ export const api = {
       request<{ investigation_id: string }>("POST", "/investigations", { body: { shipment_id } }),
     get: (id: string) => request<InvestigationView>("GET", `/investigations/${id}`),
     cancel: (id: string) => request<{ status: string }>("POST", `/investigations/${id}/cancel`),
+    buyerRequest: (id: string) => request<BuyerRequest>("GET", `/investigations/${id}/buyer-request`),
+    markBuyerRequestSent: (id: string, message: string) =>
+      request<{ status: string }>("POST", `/investigations/${id}/buyer-request`, { body: { message } }),
     streamUrl: (id: string) => `${API_PREFIX}/investigations/${id}/stream`,
   },
   demo: {

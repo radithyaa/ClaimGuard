@@ -94,6 +94,34 @@ export const shipments: ShipmentDetail[] = [
     }),
     active_anomaly: { id: "anm-003", code: "RETURN_DISPUTE", case_type: "return_fraud", severity: "high" },
   },
+  {
+    // C2 (docs/data-dummy-dan-video.md): penjual salah kirim -> keputusan seller_error
+    ...base,
+    id: "shp-011",
+    tracking_number: "SCP8899770011",
+    courier: "sicepat",
+    status: "returned",
+    origin: "Bandung",
+    destination: "Surabaya",
+    shipped_at: d("2026-10-18T03:30:00Z"),
+    sla_deadline: d("2026-10-25T03:30:00Z"),
+    item_name: "Kaos polos hitam, ukuran L",
+    item_value: 95000,
+    buyer_report: "Saya pesan kaos hitam ukuran L, tapi yang datang kaos merah ukuran M. Warnanya berbeda dari pesanan. Saya minta retur.",
+    tracking_events: [
+      { id: "te-8", status: "Paket dikemas", location: "Gudang Bandung", occurred_at: d("2026-10-17T01:03:30Z") },
+      { id: "te-9", status: "Diserahkan ke kurir", location: "Bandung", occurred_at: d("2026-10-18T03:30:00Z") },
+      { id: "te-10", status: "Diterima pembeli", location: "Surabaya", occurred_at: d("2026-10-19T07:45:00Z") },
+      { id: "te-11", status: "Retur diajukan", location: "Surabaya", occurred_at: d("2026-10-20T01:00:00Z") },
+    ],
+    anomaly: anomaly("anm-011", "shp-011", {
+      code: "RETURN_DISPUTE",
+      case_type: "return_fraud",
+      severity: "high",
+      reason_json: { summary: "Pembeli mengklaim isi paket tidak sesuai; perlu dicocokkan dengan bukti packing" },
+    }),
+    active_anomaly: { id: "anm-011", code: "RETURN_DISPUTE", case_type: "return_fraud", severity: "high" },
+  },
   ...[
     ["shp-004", "JNE0099887766", "jne", "in_transit", "Medan", "Kaos polos 3 pcs", 150000],
     ["shp-005", "JT1122334455", "jnt", "out_for_delivery", "Depok", "Tas selempang", 320000],
@@ -201,3 +229,13 @@ for (const c of claims) {
   c.claim_deadline = s?.claim_deadline ?? null;
   c.case_type ??= s?.anomaly?.case_type ?? null;
 }
+
+// Kasus D: resi tertahan tanpa rekaman CCTV -> investigasi berakhir needs_evidence (F6)
+const noCctv = shipments.find((x) => x.id === "shp-004")!;
+noCctv.anomaly = anomaly("anm-004", "shp-004", {
+  code: "SLA_EXCEEDED",
+  case_type: "lost",
+  severity: "medium",
+  reason_json: { summary: "Tertahan di hub transit melewati batas SLA; rekaman packing tidak ditemukan" },
+});
+noCctv.active_anomaly = { id: "anm-004", code: "SLA_EXCEEDED", case_type: "lost", severity: "medium" };
