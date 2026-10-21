@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     # AI (Vertex AI)
     gcp_project: str | None = None
     gcp_location: str = "global"
-    gemini_model: str = "gemini-flash-latest"
+    gemini_model: str = "gemini-2.5-flash"
     ai_mode: Literal["live", "auto", "cache"] = "auto"
     ai_cache_dir: str = "./data/cache"
     gemini_timeout_sec: float = 25.0
