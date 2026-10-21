@@ -1,0 +1,15 @@
+.env
+.env.local
+*.db
+*.db-wal
+*.db-shm
+backend/.venv/
+backend/storage/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+node_modules/
+.next/
+# backend/data/cache/ SENGAJA di-commit: rekaman AI untuk fallback demo (SRS 13)
+frontend/
+infra/
