@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 from app.schemas.evidence import EvidenceOut
 from app.schemas.investigation import InvestigationDetailOut
-from app.schemas.shipment import CourierPolicyOut
+from app.schemas.shipment import CaseType, CourierPolicyOut
 
 ClaimStatus = Literal["pending_approval", "submitted", "rejected"]
 
@@ -20,6 +20,8 @@ class ClaimSummaryOut(BaseModel):
     claim_value: int
     created_at: datetime
     is_simulated: bool
+    case_type: CaseType | None
+    claim_deadline: datetime | None
 
 
 class ClaimDetailOut(ClaimSummaryOut):

@@ -3,6 +3,7 @@
 import asyncio
 import json
 from collections.abc import AsyncGenerator
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -84,6 +85,10 @@ async def test_shipments_list_filter_and_detail(client):
     assert [s["tracking_number"] for s in found] == [LOST]
     detail = (await client.get(f"/shipments/{found[0]['id']}")).json()
     assert len(detail["tracking_events"]) == 3 and detail["anomaly"] is None
+    # Paket belum sampai: tenggat klaim = batas SLA + 14 hari kebijakan JNE
+    sla = datetime.fromisoformat(detail["sla_deadline"])
+    assert datetime.fromisoformat(detail["claim_deadline"]) == sla + timedelta(days=14)
+    assert found[0]["claim_deadline"] == detail["claim_deadline"]
 
 
 async def test_scan_flags_scenarios_and_is_idempotent(client):
@@ -125,6 +130,8 @@ async def test_lost_scenario_end_to_end_with_hitl(client, db, monkeypatch):
     claim = (await client.get(f"/claims/{claim_id}")).json()
     assert claim["status"] == "pending_approval" and claim["tracking_number"] == LOST
     assert claim["claim_value"] == 450000 and claim["is_simulated"]
+    shipment = (await client.get(f"/shipments/{claim['shipment_id']}")).json()
+    assert claim["case_type"] == "lost" and claim["claim_deadline"] == shipment["claim_deadline"]
     assert (await client.get("/claims")).json()["items"][0]["id"] == claim_id
 
     edited = await client.patch(f"/claims/{claim_id}", json={"narrative": "Narasi diedit pemilik toko."})

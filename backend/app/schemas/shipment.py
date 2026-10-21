@@ -36,6 +36,7 @@ class ShipmentOut(BaseModel):
     item_value: int
     is_simulated: bool
     active_anomaly: AnomalyBrief | None = None
+    claim_deadline: datetime | None = None  # None bila kebijakan kurir belum ada
 
 
 class TrackingEventOut(BaseModel):

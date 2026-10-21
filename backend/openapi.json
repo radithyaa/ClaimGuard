@@ -1989,6 +1989,34 @@
             "type": "boolean",
             "title": "Is Simulated"
           },
+          "case_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "lost",
+                  "damaged",
+                  "return_fraud"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Case Type"
+          },
+          "claim_deadline": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Claim Deadline"
+          },
           "investigation_id": {
             "type": "string",
             "title": "Investigation Id"
@@ -2107,6 +2135,8 @@
           "claim_value",
           "created_at",
           "is_simulated",
+          "case_type",
+          "claim_deadline",
           "investigation_id",
           "narrative",
           "draft",
@@ -2189,6 +2219,34 @@
           "is_simulated": {
             "type": "boolean",
             "title": "Is Simulated"
+          },
+          "case_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "lost",
+                  "damaged",
+                  "return_fraud"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Case Type"
+          },
+          "claim_deadline": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Claim Deadline"
           }
         },
         "type": "object",
@@ -2201,7 +2259,9 @@
           "confidence",
           "claim_value",
           "created_at",
-          "is_simulated"
+          "is_simulated",
+          "case_type",
+          "claim_deadline"
         ],
         "title": "ClaimSummaryOut"
       },
@@ -3198,6 +3258,18 @@
               }
             ]
           },
+          "claim_deadline": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Claim Deadline"
+          },
           "buyer_report": {
             "anyOf": [
               {
@@ -3325,6 +3397,18 @@
                 "type": "null"
               }
             ]
+          },
+          "claim_deadline": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Claim Deadline"
           }
         },
         "type": "object",

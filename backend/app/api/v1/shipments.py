@@ -7,6 +7,7 @@ from app.models import Anomaly, Claim, Investigation
 from app.repositories import shipments as ship_repo
 from app.schemas.common import ERROR_RESPONSES, Page
 from app.schemas.shipment import AnomalyBrief, AnomalyOut, ShipmentDetailOut, ShipmentOut
+from app.services.deadlines import claim_deadline, window_days_by_courier
 
 router = APIRouter(tags=["shipments"], responses=ERROR_RESPONSES)
 
@@ -32,9 +33,11 @@ def list_shipments(
     rows, total = ship_repo.search(db, status=status, courier=courier, q=q, limit=limit,
                                    offset=offset)
     anomalies = active_anomalies(db, [s.id for s in rows])
+    windows = window_days_by_courier(db)
     items = [
         ShipmentOut.model_validate(s).model_copy(update={
-            "active_anomaly": AnomalyBrief.model_validate(anomalies[s.id]) if s.id in anomalies else None
+            "active_anomaly": AnomalyBrief.model_validate(anomalies[s.id]) if s.id in anomalies else None,
+            "claim_deadline": claim_deadline(s, windows),
         })
         for s in rows
     ]
@@ -52,6 +55,7 @@ def get_shipment(shipment_id: str, db: DB) -> ShipmentDetailOut:
     claim = db.scalar(select(Claim).where(Claim.shipment_id == s.id)
                       .order_by(Claim.created_at.desc()))
     base = ShipmentOut.model_validate(s).model_dump()
+    base["claim_deadline"] = claim_deadline(s, window_days_by_courier(db))
     return ShipmentDetailOut(
         **{**base, "active_anomaly": AnomalyBrief.model_validate(anomaly) if anomaly else None},
         buyer_report=s.buyer_report, tracking_events=s.tracking_events,

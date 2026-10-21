@@ -11,17 +11,21 @@ from app.schemas.common import ERROR_RESPONSES, Page
 from app.schemas.evidence import EvidenceOut
 from app.schemas.shipment import CourierPolicyOut
 from app.services import claim_service
+from app.services.deadlines import claim_deadline, window_days_by_courier
 
 router = APIRouter(tags=["claims"], responses=ERROR_RESPONSES)
 
 
-def _summary(claim: Claim, shipment: Shipment, inv: Investigation | None) -> dict:
+def _summary(claim: Claim, shipment: Shipment, inv: Investigation | None,
+             windows: dict[str, int]) -> dict:
     return {
         "id": claim.id, "shipment_id": claim.shipment_id,
         "tracking_number": shipment.tracking_number, "courier": shipment.courier,
         "status": claim.status, "confidence": inv.confidence if inv else None,
         "claim_value": int(claim.draft_json.get("requested_compensation") or shipment.item_value),
         "created_at": claim.created_at, "is_simulated": claim.is_simulated,
+        "case_type": inv.case_type if inv else None,
+        "claim_deadline": claim_deadline(shipment, windows),
     }
 
 
@@ -44,7 +48,8 @@ def list_claims(
     pending_first = case((Claim.status == "pending_approval", 0), else_=1)
     rows = db.execute(stmt.order_by(pending_first, Claim.created_at.desc())
                       .limit(limit).offset(offset)).all()
-    return Page(items=[ClaimSummaryOut(**_summary(*r)) for r in rows], total=total,
+    windows = window_days_by_courier(db)
+    return Page(items=[ClaimSummaryOut(**_summary(*r, windows)) for r in rows], total=total,
                 limit=limit, offset=offset)
 
 
@@ -55,7 +60,7 @@ def _detail(db, claim: Claim) -> ClaimDetailOut:
     draft = dict(claim.draft_json)
     issues = draft.pop("draft_issues", [])
     return ClaimDetailOut(
-        **_summary(claim, shipment, inv), investigation_id=claim.investigation_id,
+        **_summary(claim, shipment, inv, window_days_by_courier(db)), investigation_id=claim.investigation_id,
         narrative=claim.narrative, draft=draft, draft_issues=issues,
         decision_reason=inv.decision_reason if inv else None, item_name=shipment.item_name,
         item_value=shipment.item_value, updated_at=claim.updated_at,
