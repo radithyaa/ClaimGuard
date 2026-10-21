@@ -104,6 +104,8 @@ export async function mockRequest<T>(method: string, path: string, { query = {},
         submitted_claims: db.claims.filter((c) => c.status === "submitted").length,
         estimated_value_saved: db.claims.filter((c) => c.status === "pending_approval").reduce((n, c) => n + c.claim_value, 0),
         avg_processing_sec: 24.6,
+        avg_review_sec: 48,
+        reviewed_claims: 3,
         trend: ["15", "16", "17", "18", "19", "20", "21"].map((day, i) => ({
           date: `2026-10-${day}`,
           anomalies: [1, 0, 2, 1, 3, 1, 3][i],
@@ -114,7 +116,11 @@ export async function mockRequest<T>(method: string, path: string, { query = {},
       return summary as T;
     }
     case "GET /audit-logs":
-      return db.auditLogs.slice(0, Number(q("limit") ?? 10)) as T;
+      {
+        const ids = query.entity_id as string[] | undefined;
+        const logs = ids ? db.auditLogs.filter((l) => l.entity_id && ids.includes(l.entity_id)) : db.auditLogs;
+        return logs.slice(0, Number(q("limit") ?? 10)) as T;
+      }
     case "GET /settings":
       return db.settings as T;
     case "PATCH /settings":

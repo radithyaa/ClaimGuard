@@ -16,6 +16,8 @@ class MetricsSummaryOut(BaseModel):
     submitted_claims: int
     estimated_value_saved: int
     avg_processing_sec: float | None
+    avg_review_sec: float | None = None  # rata-rata waktu keputusan admin (H5)
+    reviewed_claims: int = 0
     trend: list[TrendPoint]
     is_simulated: bool = True
 
