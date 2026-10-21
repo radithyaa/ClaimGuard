@@ -139,7 +139,7 @@ export default function DashboardPage() {
             </span>
           </div>
           <ActivityFeed logs={logs.data} loading={logs.isPending} error={logs.error?.message} />
-          <Link href="/audit-logs" className="mt-auto flex items-center gap-1 border-t pt-4 text-[13px] font-medium text-primary hover:underline">
+          <Link href="/settings/audit-log" className="mt-auto flex items-center gap-1 border-t pt-4 text-[13px] font-medium text-primary hover:underline">
             Lihat log audit <ArrowRight className="size-3.5" />
           </Link>
         </Panel>

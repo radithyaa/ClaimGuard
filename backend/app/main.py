@@ -16,6 +16,7 @@ from app.api.v1 import (
     investigations,
     metrics,
     monitoring,
+    ops,
     settings,
     shipments,
 )
@@ -26,7 +27,7 @@ from app.db.session import engine, init_db, session_scope
 from app.models import Shipment
 from app.schemas.metrics import HealthOut
 from app.services import demo_data, investigation_runner, scheduler
-from app.services.settings_service import get_runtime
+from app.services.settings_service import ensure_thresholds, get_runtime
 
 log = logging.getLogger(__name__)
 API_PREFIX = "/api/v1"
@@ -44,6 +45,7 @@ async def lifespan(_: FastAPI):
             if db.scalar(select(Shipment.id).limit(1)) is None:
                 log.info("database kosong: seed data demo %s", demo_data.reset_and_seed(db))
             log.info("kebijakan kurir: %s", await demo_data.ensure_policies(db) or "sudah ada")
+            log.info("pengecualian kurir: %d ditambahkan", ensure_thresholds(db))
     scheduler.start()
     yield
     scheduler.shutdown()
@@ -56,11 +58,12 @@ def create_app() -> FastAPI:
                   openapi_url=f"{API_PREFIX}/openapi.json", docs_url=f"{API_PREFIX}/docs")
     app.add_middleware(RequestIdMiddleware)
     app.add_middleware(CORSMiddleware, allow_origins=s.cors_origins, allow_credentials=True,
-                       allow_methods=["GET", "POST", "PATCH"], allow_headers=["*"],
+                       allow_methods=["GET", "POST", "PATCH", "DELETE"], allow_headers=["*"],
                        expose_headers=["X-Request-ID"])
     register_error_handlers(app)
 
-    for module in (shipments, monitoring, investigations, claims, evidence, metrics, settings, demo):
+    for module in (shipments, monitoring, investigations, claims, evidence, metrics, settings,
+                   demo, ops):
         app.include_router(module.router, prefix=API_PREFIX)
 
     @app.get(f"{API_PREFIX}/health", response_model=HealthOut, tags=["health"])

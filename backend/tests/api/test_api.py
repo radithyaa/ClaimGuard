@@ -3,7 +3,7 @@
 import asyncio
 import json
 from collections.abc import AsyncGenerator
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -13,8 +13,9 @@ from google.adk.models.llm_response import LlmResponse
 from app.agents.agent import build_root_agent
 from app.core.config import get_settings
 from app.main import create_app
+from app.models import Investigation
 from app.repositories import shipments as ship_repo
-from app.services import demo_data, investigation_runner
+from app.services import demo_data, investigation_runner, monitoring
 from tests.integration.test_pipeline import ScriptedLlm, live_models
 
 LOST = "JNE0012345678"
@@ -91,11 +92,20 @@ async def test_shipments_list_filter_and_detail(client):
     assert found[0]["claim_deadline"] == detail["claim_deadline"]
 
 
-async def test_scan_flags_scenarios_and_is_idempotent(client):
+async def test_scan_flags_scenarios_and_is_idempotent(client, db, monkeypatch):
+    # Waktu tetap: ambang tertahan per kurir dihitung dari tracking event terakhir, sehingga
+    # hasil scan bergantung pada jam berjalan. Demo menganggap "sekarang" = 21 Okt 15.00 UTC.
+    frozen = datetime(2026, 10, 21, 15, 0, tzinfo=UTC)
+    monkeypatch.setattr(monitoring, "utcnow", lambda: frozen)
+
     r = (await client.post("/monitoring/scan")).json()
     flagged = {a["code"] for a in r["new_anomalies"]}
     assert r["scanned"] == 15 and len(r["new_anomalies"]) == 4
     assert flagged == {"SLA_EXCEEDED", "BUYER_REPORTED_DAMAGE", "RETURN_DISPUTE"}
+    # Dua resi 'lost': skenario utama (jam scan CCTV) dan satu resi SLA basi tanpa pergerakan.
+    lost = sorted(a["reason_json"].get("days_stalled", a["reason_json"].get("days_late", 0))
+                  for a in r["new_anomalies"] if a["case_type"] == "lost")
+    assert len(lost) == 2
     assert (await client.post("/monitoring/scan")).json()["new_anomalies"] == []
     listed = (await client.get("/shipments", params={"limit": 100})).json()["items"]
     assert sum(1 for s in listed if s["active_anomaly"]) == 4
@@ -215,6 +225,113 @@ async def test_settings_patch_and_validation(client):
     assert r.json()["min_confidence"] == 0.75
     assert (await client.get("/settings")).json()["min_confidence"] == 0.75
     assert (await client.patch("/settings", json={"min_confidence": 2})).status_code == 422
+
+
+async def test_privacy_settings_persist(client):
+    r = await client.patch("/settings", json={
+        "video_retention_days": 14, "mask_pii": False, "deadline_reminder_hours": [24, 6],
+        "medium_confidence": 0.5,
+    })
+    body = r.json()
+    assert body["video_retention_days"] == 14 and body["mask_pii"] is False
+    assert body["deadline_reminder_hours"] == [24, 6] and body["medium_confidence"] == 0.5
+    reread = (await client.get("/settings")).json()
+    assert reread["video_retention_days"] == 14 and reread["mask_pii"] is False
+    # medium > tinggi ditolak
+    assert (await client.patch("/settings", json={"medium_confidence": 0.95})).status_code == 422
+    assert (await client.patch("/settings", json={"video_retention_days": 0})).status_code == 422
+
+
+async def test_courier_thresholds_crud(client):
+    initial = (await client.get("/settings/courier-thresholds")).json()
+    assert {t["courier"] for t in initial} == {"jnt", "spx", "jne", "sicepat", "anteraja"}
+    assert (await client.get("/settings")).json()["courier_thresholds"] == initial
+
+    payload = [{"courier": "jne", "display_name": "JNE Express", "hold_days": 2,
+                "sla_note": "Kargo & Reguler"},
+               {"courier": "jnt", "display_name": "J&T Express", "hold_days": 5,
+                "tag": "Longgar"}]
+    updated = (await client.put("/settings/courier-thresholds", json=payload)).json()
+    assert [(t["courier"], t["hold_days"]) for t in updated] == [("jne", 2), ("jnt", 5)]
+    assert (await client.get("/settings/courier-thresholds")).json() == updated
+
+    dup = payload + [payload[0]]
+    assert (await client.put("/settings/courier-thresholds", json=dup)).status_code == 422
+    bad = [{"courier": "JNE", "display_name": "x", "hold_days": 2}]
+    assert (await client.put("/settings/courier-thresholds", json=bad)).status_code == 422
+
+
+async def test_import_shipments_csv(client):
+    csv_body = (
+        b"tracking_number,courier,status,origin,destination,shipped_at,sla_deadline,"
+        b"item_name,item_value\n"
+        b"CSV0000000001,jne,in_transit,Bandung,Medan,2026-10-20T09:00:00Z,"
+        b"2026-10-25T09:00:00Z,Kaos,150000\n"
+        b"JNE0099887766,jne,delivered,Bandung,Medan,2026-10-16T05:00:00Z,"
+        b"2026-10-20T05:00:00Z,Kaos,150000\n"
+        b"CSV0000000002,kurir-asing,created,A,B,2026-10-20T09:00:00Z,"
+        b"2026-10-21T09:00:00Z,X,1\n"
+    )
+    r = await client.post("/shipments/import",
+                          files={"file": ("resi.csv", csv_body, "text/csv")})
+    assert r.status_code == 200
+    body = r.json()
+    assert (body["imported"], body["updated"], body["skipped"]) == (1, 1, 1)
+    assert body["errors"][0]["line"] == 4 and "kurir" in body["errors"][0]["message"]
+
+    found = (await client.get("/shipments", params={"q": "CSV0000000001"})).json()
+    assert found["total"] == 1 and found["items"][0]["courier"] == "jne"
+    assert (await client.get("/shipments", params={"limit": 100})).json()["total"] == 16
+
+    missing = (await client.post("/shipments/import",
+                                 files={"file": ("x.csv", b"a,b\n1,2\n", "text/csv")}))
+    assert missing.status_code == 422 and missing.json()["error"]["code"] == "invalid_csv"
+    template = await client.get("/shipments/import/template")
+    assert template.status_code == 200 and template.text.startswith("tracking_number")
+
+
+async def test_connections_status_and_toggle(client):
+    body = (await client.get("/connections")).json()
+    assert [m["id"] for m in body["marketplaces"]] == ["shopee", "tiktok_shop"]
+    assert body["marketplaces"][0]["connected"] is False
+
+    r = await client.patch("/connections/shopee", json={"connected": True})
+    assert r.json()["connected"] is True
+    assert (await client.get("/connections")).json()["marketplaces"][0]["connected"] is True
+    assert (await client.patch("/connections/unknown", json={"connected": True})).status_code == 404
+    r = await client.patch("/connections/tiktok_shop", json={"connected": True})
+    assert r.status_code == 409 and r.json()["error"]["code"] == "not_available"
+
+
+async def test_delete_and_purge_investigations(client, db, monkeypatch):
+    use_scripted_agent(monkeypatch, db)
+    inv_id = (await client.post("/demo/scenario/lost")).json()["investigation_id"]
+    inv = await wait_status(client, inv_id, "completed")
+    assert inv["evidence"]
+    assert (await client.get("/claims")).json()["total"] == 1
+
+    r = await client.delete(f"/investigations/{inv_id}")
+    assert r.status_code == 200 and r.json()["deleted_evidence"] == 1
+    assert (await client.get(f"/investigations/{inv_id}")).status_code == 404
+    assert (await client.get("/claims")).json()["total"] == 0
+    assert (await client.delete(f"/investigations/{inv_id}")).status_code == 404
+
+    with db() as s:
+        ship = ship_repo.get_by_tracking(s, LOST)
+        assert s.get(Investigation, inv_id) is None
+        assert ship is not None  # resi tidak ikut terhapus
+
+    # purge: investigasi baru (dibuat 0 menit lalu) belum melewati retensi 1 hari.
+    use_scripted_agent(monkeypatch, db)
+    inv_id = (await client.post("/demo/scenario/lost")).json()["investigation_id"]
+    await wait_status(client, inv_id, "completed")
+    kept = (await client.post("/investigations/purge", params={"older_than_days": 1})).json()
+    assert kept["deleted"] == 0
+
+    # Investigasi dibuat baru saja, jadi retensi 1 hari tidak menyentuhnya.
+    assert (await client.get(f"/investigations/{inv_id}")).status_code == 200
+    actions = [a["action"] for a in (await client.get("/audit-logs", params={"limit": 50})).json()]
+    assert "investigation_deleted" in actions
 
 
 async def test_demo_reset_restores_data_and_keeps_policies(client, db, monkeypatch):

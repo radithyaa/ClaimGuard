@@ -224,6 +224,23 @@ class AuditLog(Base):
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, index=True)
 
 
+class CourierThreshold(Base):
+    """Batas tertahan per kurir (tab Pengaturan > Pemantauan dan ambang).
+
+    Menimpa `settings.sla_grace_hours` bila ada. `hold_days` = jumlah hari resi tanpa
+    pergerakan sebelum ditandai anomali 'Tertahan'; `sla_note` hanya label tampilan.
+    """
+
+    __tablename__ = "courier_thresholds"
+
+    courier: Mapped[str] = mapped_column(String(32), primary_key=True)
+    display_name: Mapped[str] = mapped_column(String(64))
+    hold_days: Mapped[int] = mapped_column(Integer, default=3)
+    sla_note: Mapped[str] = mapped_column(String(64), default="Standar SLA")
+    tag: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, onupdate=utcnow)
+
+
 class Setting(Base):
     __tablename__ = "settings"
 

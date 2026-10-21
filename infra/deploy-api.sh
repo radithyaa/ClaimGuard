@@ -21,7 +21,7 @@ DB_NAME="${DB_NAME:-claimguard}"
 DB_USER="${DB_USER:-claimguard}"
 BUCKET="${BUCKET:-${PROJECT_ID}-claimguard-media}"
 SA_RUN="${SA_RUN:-claimguard-run}"
-GEMINI_MODEL="${GEMINI_MODEL:-gemini-flash-latest}"
+GEMINI_MODEL="${GEMINI_MODEL:-gemini-2.5-flash}"
 GCP_LOCATION="${GCP_LOCATION:-global}"
 AI_MODE="${AI_MODE:-auto}"
 PUBLIC_BASE_URL="${PUBLIC_BASE_URL:-}"
@@ -31,17 +31,19 @@ SA_RUN_EMAIL="$SA_RUN@$PROJECT_ID.iam.gserviceaccount.com"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 DRY_RUN=0
+USE_IMAGE=0
 TRAFFIC_ARGS=()
 for arg in "$@"; do
   case "$arg" in
     --dry-run)    DRY_RUN=1 ;;
     --no-traffic) TRAFFIC_ARGS+=(--no-traffic) ;;
+    --image)      USE_IMAGE=1 ;;   # lewati build: ~2 menit, bukan 5-15 menit
     *) echo "Argumen tidak dikenal: $arg" >&2; exit 1 ;;
   esac
 done
 
 [[ -f "$ROOT/backend/Dockerfile" ]] || { echo "backend/Dockerfile tidak ada" >&2; exit 1; }
-if [[ ! -f "$ROOT/backend/app/main.py" ]]; then
+if [[ "$USE_IMAGE" == "0" && ! -f "$ROOT/backend/app/main.py" ]]; then
   echo "PERINGATAN: backend/app/main.py belum ada (milik Backend B)." >&2
   echo "Container akan gagal start karena Dockerfile menjalankan 'app.main:app'." >&2
   echo "Lanjutkan hanya untuk menguji build (Ctrl+C untuk batal)." >&2
@@ -56,6 +58,11 @@ ENV_VARS+=",GCP_PROJECT=$PROJECT_ID"
 ENV_VARS+=",GCP_LOCATION=$GCP_LOCATION"
 ENV_VARS+=",GEMINI_MODEL=$GEMINI_MODEL"
 ENV_VARS+=",AI_MODE=$AI_MODE"
+ENV_VARS+=",AUTH_REQUIRED=true"
+# CORS: diisi setelah URL frontend tersedia (NFR-06).
+if [[ -n "${CORS_ORIGINS:-}" ]]; then
+  ENV_VARS+=",CORS_ORIGINS=$CORS_ORIGINS"
+fi
 # Dibaca ADK untuk memanggil model (NFR-04: tanpa API key, lewat service account).
 ENV_VARS+=",GOOGLE_GENAI_USE_VERTEXAI=TRUE"
 ENV_VARS+=",GOOGLE_CLOUD_PROJECT=$PROJECT_ID"
@@ -69,12 +76,15 @@ fi
 # Buat sekali:
 #   printf 'postgresql+psycopg://%s:%s@/%s?host=/cloudsql/%s' "$DB_USER" "$PW" "$DB_NAME" "$DB_CONN" \
 #     | gcloud secrets create claimguard-database-url --data-file=-
+# config.py menolak start bila ENV=cloud memakai SESSION_SECRET/DEMO_PASSWORD default
+# (_cloud_requires_real_secrets), jadi keduanya wajib dari Secret Manager.
 SECRETS="DATABASE_URL=claimguard-database-url:latest"
+SECRETS+=",SESSION_SECRET=claimguard-session-secret:latest"
+SECRETS+=",DEMO_PASSWORD=claimguard-demo-password:latest"
 
 # Cloud SQL Proxy sidecar disediakan oleh --add-cloudsql-instances (socket /cloudsql/<conn>).
 CMD=(gcloud run deploy "$SERVICE"
   --project "$PROJECT_ID"
-  --source "$ROOT/backend"
   --region "$REGION"
   --service-account "$SA_RUN_EMAIL"
   --add-cloudsql-instances "$DB_CONN"
@@ -90,6 +100,12 @@ CMD=(gcloud run deploy "$SERVICE"
   --allow-unauthenticated
   --quiet
 )
+# --image: lewati build. Pakai ini untuk perubahan env/config saja.
+if [[ "$USE_IMAGE" == "1" ]]; then
+  CMD+=(--image "$REGION-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/$SERVICE:latest")
+else
+  CMD+=(--source "$ROOT/backend")
+fi
 if [[ ${#TRAFFIC_ARGS[@]} -gt 0 ]]; then
   CMD+=("${TRAFFIC_ARGS[@]}")
 fi

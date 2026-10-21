@@ -8,9 +8,13 @@ from app.schemas.common import ERROR_RESPONSES
 from app.schemas.metrics import LoginIn, LoginOut
 from app.services import audit, scheduler
 from app.services.settings_service import (
+    CourierThresholdIn,
+    CourierThresholdOut,
     RuntimeSettings,
     RuntimeSettingsPatch,
     get_runtime,
+    list_thresholds,
+    replace_thresholds,
     update_runtime,
 )
 
@@ -30,6 +34,27 @@ def patch_settings(body: RuntimeSettingsPatch, db: DB, user: User) -> RuntimeSet
     db.commit()
     scheduler.apply(updated)
     return updated
+
+
+@router.get("/settings/courier-thresholds", response_model=list[CourierThresholdOut],
+            tags=["settings"])
+def read_courier_thresholds(db: DB) -> list[CourierThresholdOut]:
+    return [CourierThresholdOut.of(row) for row in list_thresholds(db)]
+
+
+@router.put("/settings/courier-thresholds", response_model=list[CourierThresholdOut],
+            tags=["settings"])
+def put_courier_thresholds(body: list[CourierThresholdIn], db: DB,
+                           user: User) -> list[CourierThresholdOut]:
+    """Mengganti seluruh pengecualian kurir (halaman Pengaturan > Pengecualian per kurir)."""
+    couriers = [item.courier for item in body]
+    if len(couriers) != len(set(couriers)):
+        raise AppError(422, "duplicate_courier", "Kode kurir tidak boleh duplikat")
+    replace_thresholds(db, body)
+    audit.record(db, actor=user, action="courier_thresholds_updated", entity="settings",
+                 payload={"couriers": couriers})
+    db.commit()
+    return [CourierThresholdOut.of(row) for row in list_thresholds(db)]
 
 
 @router.post("/auth/login", response_model=LoginOut, tags=["auth"])

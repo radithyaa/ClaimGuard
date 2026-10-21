@@ -167,7 +167,43 @@ Flag yang dipakai dan alasannya:
 
 `--source` memakai Cloud Build, jadi tidak butuh Docker lokal.
 
-### 5.3 Status prasyarat
+### 5.3 Deploy frontend (claimguard-web)
+
+```bash
+export API_URL=https://claimguard-api-259363364922.asia-southeast2.run.app
+./infra/deploy-web.sh --dry-run
+./infra/deploy-web.sh
+```
+
+**`NEXT_PUBLIC_API_BASE_URL` wajib lewat `--build-arg`, bukan `--set-env-vars`.** Next.js meng-inline nilai `NEXT_PUBLIC_*` ke bundle saat `next build`. Memberikannya sebagai env runtime **tidak berpengaruh sama sekali** — hasilnya frontend akan memanggil `http://localhost:8000`. `deploy-web.sh` sudah menangani ini.
+
+Setelah web punya URL, **backend harus diberi CORS origin web** (NFR-06):
+
+```bash
+CORS_ORIGINS='["https://claimguard-web-xxxx.a.run.app"]' ./infra/deploy-api.sh --image
+```
+
+### 5.4 Dua mode deploy: kapan pakai yang mana
+
+| Perubahan | Perintah | Waktu |
+| --- | --- | --- |
+| Kode backend/frontend | `./infra/deploy-api.sh` / `deploy-web.sh` | 5–15 menit (build) |
+| Env, secret, CORS, CPU/memory | tambahkan `--image` | **~2 menit** |
+
+`--image` memakai tag `:latest` yang sudah ada di Artifact Registry, jadi tidak memicu Cloud Build. Ini yang dipakai saat rolling config di checkpoint.
+
+### 5.5 Kegagalan umum dan artinya
+
+| Pesan | Penyebab sebenarnya |
+| --- | --- |
+| `could not find source [backend]` | perintah dijalankan dari `frontend/`; path `--source` relatif ke CWD |
+| `Aborted by user` walau tidak ada interaksi | `--quiet` menjawab "N" pada prompt aktivasi API |
+| `failed to update builder last activity` / `no space left on device` | disk lokal penuh; `docker builder prune -af` |
+| revisi `failed to start and listen on PORT` | container crash; baca `gcloud run services logs read` |
+| `Connection refused` di `/cloudsql/...` | SA runtime belum punya `roles/cloudsql.client` |
+| Gemini 403 saat investigasi | SA runtime belum punya `roles/aiplatform.user` |
+
+### 5.6 Status prasyarat
 
 `deploy-api.sh` akan memperingatkan bila `backend/app/main.py` belum ada (milik Backend B). Tanpa file itu, container gagal start karena entrypoint menjalankan `app.main:app`. Urutan yang benar: Backend B membuat `main.py` → deploy API → Frontend A deploy web.
 
