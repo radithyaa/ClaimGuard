@@ -31,6 +31,7 @@ from app.models import (
 )
 from app.repositories import policies as policy_repo
 from app.services import policy_extractor, storage_service, video_service
+from app.services.settings_service import ensure_thresholds
 
 log = logging.getLogger(__name__)
 SCENARIOS = ("lost", "damaged", "return_fraud")
@@ -109,7 +110,11 @@ def reset_and_seed(db: Session, *, synthetic_media: bool = False) -> dict[str, A
             buyer_report=row.get("buyer_report"), is_simulated=True,
         )
         db.add(ship)
+        db.flush()  # perlu id untuk tracking_events
         by_tracking[ship.tracking_number] = ship
+        for e in row.get("tracking_events", []):
+            db.add(TrackingEvent(shipment_id=ship.id, status=e["status"], location=e["location"],
+                                 occurred_at=_ts(e["occurred_at"])))
     db.flush()
 
     media_ids: dict[str, str] = {}
@@ -127,16 +132,15 @@ def reset_and_seed(db: Session, *, synthetic_media: bool = False) -> dict[str, A
 
     for row in data["shipments"]:
         ship = by_tracking[row["tracking_number"]]
-        for e in row.get("tracking_events", []):
-            db.add(TrackingEvent(shipment_id=ship.id, status=e["status"], location=e["location"],
-                                 occurred_at=_ts(e["occurred_at"])))
         if scan := row.get("pack_scan"):
             db.add(PackScanLog(shipment_id=ship.id, scanned_at=_ts(scan["scanned_at"]),
                                cctv_media_id=media_ids.get(scan.get("cctv", ""))))
     db.flush()
+    thresholds = ensure_thresholds(db)
     if missing:
         log.warning("media sampel belum ada: %s", ", ".join(missing))
-    return {"shipments": len(by_tracking), "media": len(media_ids), "missing_media": missing}
+    return {"shipments": len(by_tracking), "media": len(media_ids), "missing_media": missing,
+            "courier_thresholds": thresholds}
 
 
 async def ensure_policies(db: Session) -> dict[str, str]:

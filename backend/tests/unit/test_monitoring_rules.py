@@ -40,3 +40,19 @@ def test_return_dispute():
     flag = evaluate(ship("returned", report="Paket yang diterima kosong"), NOW)
     assert flag.code == "RETURN_DISPUTE" and flag.case_type == "return_fraud"
     assert evaluate(ship("returned", report="Ukuran kebesaran"), NOW) is None
+
+
+def test_courier_hold_days_overrides_sla_deadline():
+    """Pengecualian per kurir: dihitung dari pergerakan terakhir, bukan sla_deadline."""
+    # Event terakhir 4 hari lalu; batas 3 hari -> tertahan.
+    stuck = ship("in_transit", sla_days_ago=10, report=None)
+    flag = evaluate(stuck, NOW, hold_days=3)
+    assert flag is not None and flag.code == "SLA_EXCEEDED" and flag.case_type == "lost"
+    assert flag.reason["days_stalled"] == pytest.approx(4, abs=0.1)
+    assert flag.reason["hold_days"] == 3 and "jne" in flag.reason["summary"]
+    # Selisih ke sla_deadline tidak dipakai pada jalur ini.
+    assert evaluate(stuck, NOW, hold_days=6) is None
+
+
+def test_courier_hold_days_applies_only_in_transit():
+    assert evaluate(ship("delivered", report="aman"), NOW, hold_days=1) is None

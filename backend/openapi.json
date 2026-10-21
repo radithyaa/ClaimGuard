@@ -610,6 +610,76 @@
             "description": "Unprocessable Content"
           }
         }
+      },
+      "delete": {
+        "tags": [
+          "ops"
+        ],
+        "summary": "Delete Investigation",
+        "operationId": "delete_investigation_api_v1_investigations__investigation_id__delete",
+        "parameters": [
+          {
+            "name": "investigation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Investigation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteInvestigationOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        }
       }
     },
     "/api/v1/investigations/{investigation_id}/cancel": {
@@ -1529,6 +1599,149 @@
         }
       }
     },
+    "/api/v1/settings/courier-thresholds": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Read Courier Thresholds",
+        "operationId": "read_courier_thresholds_api_v1_settings_courier_thresholds_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CourierThresholdOut"
+                  },
+                  "type": "array",
+                  "title": "Response Read Courier Thresholds Api V1 Settings Courier Thresholds Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Put Courier Thresholds",
+        "description": "Mengganti seluruh pengecualian kurir (halaman Pengaturan > Pengecualian per kurir).",
+        "operationId": "put_courier_thresholds_api_v1_settings_courier_thresholds_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "items": {
+                  "$ref": "#/components/schemas/CourierThresholdIn"
+                },
+                "type": "array",
+                "title": "Body"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CourierThresholdOut"
+                  },
+                  "type": "array",
+                  "title": "Response Put Courier Thresholds Api V1 Settings Courier Thresholds Put"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/auth/login": {
       "post": {
         "tags": [
@@ -1694,6 +1907,355 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/StartInvestigationOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        }
+      }
+    },
+    "/api/v1/shipments/import": {
+      "post": {
+        "tags": [
+          "ops"
+        ],
+        "summary": "Import Shipments",
+        "operationId": "import_shipments_api_v1_shipments_import_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_import_shipments_api_v1_shipments_import_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CsvImportOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/shipments/import/template": {
+      "get": {
+        "tags": [
+          "ops"
+        ],
+        "summary": "Import Template",
+        "operationId": "import_template_api_v1_shipments_import_template_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/connections": {
+      "get": {
+        "tags": [
+          "ops"
+        ],
+        "summary": "Read Connections",
+        "operationId": "read_connections_api_v1_connections_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionsOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/connections/{connection_id}": {
+      "patch": {
+        "tags": [
+          "ops"
+        ],
+        "summary": "Patch Connection",
+        "operationId": "patch_connection_api_v1_connections__connection_id__patch",
+        "parameters": [
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Connection Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionResultOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        }
+      }
+    },
+    "/api/v1/investigations/purge": {
+      "post": {
+        "tags": [
+          "ops"
+        ],
+        "summary": "Purge Investigations",
+        "description": "Menghapus investigasi terminal yang lebih tua dari `older_than_days`.",
+        "operationId": "purge_investigations_api_v1_investigations_purge_post",
+        "parameters": [
+          {
+            "name": "older_than_days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 365,
+              "minimum": 1,
+              "default": 30,
+              "title": "Older Than Days"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PurgeResultOut"
                 }
               }
             }
@@ -1919,6 +2481,62 @@
           "created_at"
         ],
         "title": "AuditLogOut"
+      },
+      "Body_import_shipments_api_v1_shipments_import_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_import_shipments_api_v1_shipments_import_post"
+      },
+      "CameraTimeDrift": {
+        "properties": {
+          "camera": {
+            "type": "string",
+            "title": "Camera"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "drift_sec": {
+            "type": "number",
+            "title": "Drift Sec"
+          },
+          "calibrated_at": {
+            "type": "string",
+            "title": "Calibrated At"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "perlu_kalibrasi"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "camera",
+          "label",
+          "source",
+          "drift_sec",
+          "calibrated_at",
+          "status"
+        ],
+        "title": "CameraTimeDrift"
       },
       "ClaimBrief": {
         "properties": {
@@ -2205,6 +2823,66 @@
         ],
         "title": "ClaimSummaryOut"
       },
+      "ConnectIn": {
+        "properties": {
+          "connected": {
+            "type": "boolean",
+            "title": "Connected"
+          }
+        },
+        "type": "object",
+        "required": [
+          "connected"
+        ],
+        "title": "ConnectIn"
+      },
+      "ConnectionResultOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "connected": {
+            "type": "boolean",
+            "title": "Connected"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "connected",
+          "detail"
+        ],
+        "title": "ConnectionResultOut"
+      },
+      "ConnectionsOut": {
+        "properties": {
+          "marketplaces": {
+            "items": {
+              "$ref": "#/components/schemas/MarketplaceOut"
+            },
+            "type": "array",
+            "title": "Marketplaces"
+          },
+          "cameras": {
+            "items": {
+              "$ref": "#/components/schemas/CameraTimeDrift"
+            },
+            "type": "array",
+            "title": "Cameras"
+          }
+        },
+        "type": "object",
+        "required": [
+          "marketplaces",
+          "cameras"
+        ],
+        "title": "ConnectionsOut"
+      },
       "CourierPolicyOut": {
         "properties": {
           "courier": {
@@ -2257,6 +2935,179 @@
           "extracted_at"
         ],
         "title": "CourierPolicyOut"
+      },
+      "CourierThresholdIn": {
+        "properties": {
+          "courier": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 1,
+            "pattern": "^[a-z0-9_]+$",
+            "title": "Courier"
+          },
+          "display_name": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Display Name"
+          },
+          "hold_days": {
+            "type": "integer",
+            "maximum": 30.0,
+            "minimum": 1.0,
+            "title": "Hold Days"
+          },
+          "sla_note": {
+            "type": "string",
+            "maxLength": 64,
+            "title": "Sla Note",
+            "default": "Standar SLA"
+          },
+          "tag": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tag"
+          }
+        },
+        "type": "object",
+        "required": [
+          "courier",
+          "display_name",
+          "hold_days"
+        ],
+        "title": "CourierThresholdIn"
+      },
+      "CourierThresholdOut": {
+        "properties": {
+          "courier": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 1,
+            "pattern": "^[a-z0-9_]+$",
+            "title": "Courier"
+          },
+          "display_name": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Display Name"
+          },
+          "hold_days": {
+            "type": "integer",
+            "maximum": 30.0,
+            "minimum": 1.0,
+            "title": "Hold Days"
+          },
+          "sla_note": {
+            "type": "string",
+            "maxLength": 64,
+            "title": "Sla Note",
+            "default": "Standar SLA"
+          },
+          "tag": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tag"
+          }
+        },
+        "type": "object",
+        "required": [
+          "courier",
+          "display_name",
+          "hold_days"
+        ],
+        "title": "CourierThresholdOut"
+      },
+      "CsvImportOut": {
+        "properties": {
+          "imported": {
+            "type": "integer",
+            "title": "Imported"
+          },
+          "updated": {
+            "type": "integer",
+            "title": "Updated"
+          },
+          "skipped": {
+            "type": "integer",
+            "title": "Skipped"
+          },
+          "errors": {
+            "items": {
+              "$ref": "#/components/schemas/CsvImportRowError"
+            },
+            "type": "array",
+            "title": "Errors",
+            "default": []
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          }
+        },
+        "type": "object",
+        "required": [
+          "imported",
+          "updated",
+          "skipped",
+          "filename"
+        ],
+        "title": "CsvImportOut"
+      },
+      "CsvImportRowError": {
+        "properties": {
+          "line": {
+            "type": "integer",
+            "title": "Line"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "line",
+          "message"
+        ],
+        "title": "CsvImportRowError"
+      },
+      "DeleteInvestigationOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "deleted_evidence": {
+            "type": "integer",
+            "title": "Deleted Evidence",
+            "default": 0
+          },
+          "deleted_events": {
+            "type": "integer",
+            "title": "Deleted Events",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "title": "DeleteInvestigationOut"
       },
       "ErrorBody": {
         "properties": {
@@ -2838,6 +3689,49 @@
         ],
         "title": "LoginOut"
       },
+      "MarketplaceOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": [
+              "shopee",
+              "tiktok_shop"
+            ],
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "kind": {
+            "type": "string",
+            "const": "marketplace",
+            "title": "Kind"
+          },
+          "connected": {
+            "type": "boolean",
+            "title": "Connected"
+          },
+          "available": {
+            "type": "boolean",
+            "title": "Available"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "connected",
+          "available",
+          "detail"
+        ],
+        "title": "MarketplaceOut"
+      },
       "MediaUrlOut": {
         "properties": {
           "evidence_id": {
@@ -2988,6 +3882,33 @@
         ],
         "title": "Page[ShipmentOut]"
       },
+      "PurgeResultOut": {
+        "properties": {
+          "deleted": {
+            "type": "integer",
+            "title": "Deleted",
+            "description": "Jumlah investigasi yang dihapus"
+          },
+          "media_deleted": {
+            "type": "integer",
+            "title": "Media Deleted",
+            "description": "Berkas media yang ikut dihapus",
+            "default": 0
+          },
+          "skipped_active": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Skipped Active"
+          }
+        },
+        "type": "object",
+        "required": [
+          "deleted"
+        ],
+        "title": "PurgeResultOut"
+      },
       "RejectIn": {
         "properties": {
           "reason": {
@@ -3023,6 +3944,12 @@
             "minimum": 0.0,
             "title": "Min Confidence"
           },
+          "medium_confidence": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Medium Confidence"
+          },
           "ai_mode": {
             "type": "string",
             "enum": [
@@ -3035,6 +3962,39 @@
           "scheduler_enabled": {
             "type": "boolean",
             "title": "Scheduler Enabled"
+          },
+          "video_retention_days": {
+            "type": "integer",
+            "maximum": 365.0,
+            "minimum": 1.0,
+            "title": "Video Retention Days"
+          },
+          "mask_pii": {
+            "type": "boolean",
+            "title": "Mask Pii"
+          },
+          "deadline_reminder_hours": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Deadline Reminder Hours"
+          },
+          "shopee_connected": {
+            "type": "boolean",
+            "title": "Shopee Connected"
+          },
+          "tiktok_shop_connected": {
+            "type": "boolean",
+            "title": "Tiktok Shop Connected"
+          },
+          "courier_thresholds": {
+            "items": {
+              "$ref": "#/components/schemas/CourierThresholdOut"
+            },
+            "type": "array",
+            "title": "Courier Thresholds",
+            "default": []
           }
         },
         "type": "object",
@@ -3042,8 +4002,14 @@
           "scan_interval_min",
           "sla_grace_hours",
           "min_confidence",
+          "medium_confidence",
           "ai_mode",
-          "scheduler_enabled"
+          "scheduler_enabled",
+          "video_retention_days",
+          "mask_pii",
+          "deadline_reminder_hours",
+          "shopee_connected",
+          "tiktok_shop_connected"
         ],
         "title": "RuntimeSettings"
       },
@@ -3088,6 +4054,19 @@
             ],
             "title": "Min Confidence"
           },
+          "medium_confidence": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Medium Confidence"
+          },
           "ai_mode": {
             "anyOf": [
               {
@@ -3114,6 +4093,67 @@
               }
             ],
             "title": "Scheduler Enabled"
+          },
+          "video_retention_days": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 365.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Video Retention Days"
+          },
+          "mask_pii": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mask Pii"
+          },
+          "deadline_reminder_hours": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array",
+                "maxItems": 5
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline Reminder Hours"
+          },
+          "shopee_connected": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Shopee Connected"
+          },
+          "tiktok_shop_connected": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tiktok Shop Connected"
           }
         },
         "type": "object",
