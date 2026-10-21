@@ -32,13 +32,14 @@ export class ApiError extends Error {
   }
 }
 
-type Query = Record<string, string | number | boolean | undefined | null>;
+type Query = Record<string, string | number | boolean | string[] | undefined | null>;
 
 function toQuery(params?: Query): string {
   if (!params) return "";
   const qs = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
-    if (v !== undefined && v !== null && v !== "") qs.set(k, String(v));
+    if (Array.isArray(v)) v.forEach((x) => qs.append(k, x));
+    else if (v !== undefined && v !== null && v !== "") qs.set(k, String(v));
   }
   const s = qs.toString();
   return s ? `?${s}` : "";
@@ -131,8 +132,10 @@ export const api = {
       request<Paginated<ClaimSummary>>("GET", "/claims", { query }),
     get: (id: string) => request<ClaimDetail>("GET", `/claims/${id}`),
     update: (id: string, narrative: string) => request<ClaimDetail>("PATCH", `/claims/${id}`, { body: { narrative } }),
-    approve: (id: string) => request<ClaimDetail>("POST", `/claims/${id}/approve`),
-    reject: (id: string, reason: string) => request<ClaimDetail>("POST", `/claims/${id}/reject`, { body: { reason } }),
+    // review_sec: lama admin meninjau (H5), disimpan di log audit
+    approve: (id: string, reviewSec?: number) => request<ClaimDetail>("POST", `/claims/${id}/approve`, { body: { review_sec: reviewSec } }),
+    reject: (id: string, reason: string, reviewSec?: number) =>
+      request<ClaimDetail>("POST", `/claims/${id}/reject`, { body: { reason, review_sec: reviewSec } }),
   },
   couriers: {
     policies: () => request<CourierPolicy[]>("GET", "/couriers/policies"),
@@ -142,6 +145,7 @@ export const api = {
   },
   auditLogs: {
     list: (limit = 10) => request<AuditLog[]>("GET", "/audit-logs", { query: { limit } }),
+    forEntities: (ids: string[]) => request<AuditLog[]>("GET", "/audit-logs", { query: { entity_id: ids, limit: 50 } }),
   },
   settings: {
     get: () => request<AppSettings>("GET", "/settings"),

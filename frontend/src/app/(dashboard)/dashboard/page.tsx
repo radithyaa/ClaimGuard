@@ -13,30 +13,11 @@ import { SimulatedBadge } from "@/components/ui/simulated-badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { api } from "@/lib/api-client";
+import { actionLabel, actorLabel } from "@/lib/audit-labels";
 import { COURIER_LABEL, formatDate, formatRupiah } from "@/lib/format";
 import type { AuditLog, ClaimSummary } from "@/types/api";
 
 const TARGET_SEC = 30;
-
-const ACTOR_LABEL: Record<string, string> = {
-  "agent:monitor": "Monitoring Agent",
-  "agent:investigator": "Investigation Agent",
-  "agent:vision": "Investigation Agent",
-  "agent:evaluator": "Investigation Agent",
-  "agent:drafter": "Action Agent",
-  system: "Sistem",
-  user: "Admin",
-};
-
-const ACTION_LABEL: Record<string, string> = {
-  anomaly_flagged: "menandai anomali",
-  decision_made: "memutuskan hasil investigasi",
-  claim_drafted: "menyusun draf klaim",
-  claim_submitted: "mengirim klaim",
-  claim_rejected: "menolak draf klaim",
-  settings_updated: "mengubah pengaturan",
-};
-
 
 function Panel({ className = "", children }: { className?: string; children: React.ReactNode }) {
   return <section className={`rounded-xl border bg-card p-5 ${className}`}>{children}</section>;
@@ -260,7 +241,7 @@ function ActivityFeed({ logs, loading, error }: { logs?: AuditLog[]; loading: bo
             <div className="text-sm">
               <p className="text-[13px] text-muted-foreground">{time.format(new Date(l.created_at))}</p>
               <p>
-                {ACTOR_LABEL[l.actor] ?? l.actor} {ACTION_LABEL[l.action] ?? l.action.replaceAll("_", " ")}
+                {actorLabel(l.actor)} {actionLabel(l.action)}
                 {ref && <span className="font-mono text-[13px]"> {ref}</span>}
               </p>
             </div>

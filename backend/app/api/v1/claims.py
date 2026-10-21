@@ -6,7 +6,14 @@ from app.core.errors import not_found
 from app.models import Claim, Investigation, Shipment
 from app.repositories import investigations as inv_repo
 from app.repositories import policies as policy_repo
-from app.schemas.claim import ClaimDetailOut, ClaimPatchIn, ClaimStatus, ClaimSummaryOut, RejectIn
+from app.schemas.claim import (
+    ApproveIn,
+    ClaimDetailOut,
+    ClaimPatchIn,
+    ClaimStatus,
+    ClaimSummaryOut,
+    RejectIn,
+)
 from app.schemas.common import ERROR_RESPONSES, Page
 from app.schemas.evidence import EvidenceOut
 from app.schemas.shipment import CourierPolicyOut
@@ -87,14 +94,14 @@ def edit_claim(claim_id: str, body: ClaimPatchIn, db: DB, user: User) -> ClaimDe
 
 
 @router.post("/claims/{claim_id}/approve", response_model=ClaimDetailOut)
-def approve_claim(claim_id: str, db: DB, user: User) -> ClaimDetailOut:
-    claim = claim_service.approve(db, claim_id, actor=user)
+def approve_claim(claim_id: str, db: DB, user: User, body: ApproveIn | None = None) -> ClaimDetailOut:
+    claim = claim_service.approve(db, claim_id, actor=user, review_sec=body.review_sec if body else None)
     db.commit()
     return _detail(db, claim)
 
 
 @router.post("/claims/{claim_id}/reject", response_model=ClaimDetailOut)
 def reject_claim(claim_id: str, body: RejectIn, db: DB, user: User) -> ClaimDetailOut:
-    claim = claim_service.reject(db, claim_id, body.reason, actor=user)
+    claim = claim_service.reject(db, claim_id, body.reason, actor=user, review_sec=body.review_sec)
     db.commit()
     return _detail(db, claim)

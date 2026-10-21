@@ -1304,6 +1304,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ApproveIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -1568,6 +1585,26 @@
                 }
               ],
               "title": "Entity"
+            }
+          },
+          {
+            "name": "entity_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 10
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Entity Id"
             }
           }
         ],
@@ -2586,6 +2623,25 @@
           "status"
         ],
         "title": "AnomalyOut"
+      },
+      "ApproveIn": {
+        "properties": {
+          "review_sec": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 86400.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Sec"
+          }
+        },
+        "type": "object",
+        "title": "ApproveIn"
       },
       "AuditLogOut": {
         "properties": {
@@ -4080,6 +4136,22 @@
             ],
             "title": "Avg Processing Sec"
           },
+          "avg_review_sec": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Review Sec"
+          },
+          "reviewed_claims": {
+            "type": "integer",
+            "title": "Reviewed Claims",
+            "default": 0
+          },
           "trend": {
             "items": {
               "$ref": "#/components/schemas/TrendPoint"
@@ -4200,6 +4272,19 @@
             "maxLength": 1000,
             "minLength": 3,
             "title": "Reason"
+          },
+          "review_sec": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 86400.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Sec"
           }
         },
         "type": "object",

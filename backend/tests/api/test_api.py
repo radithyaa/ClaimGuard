@@ -235,6 +235,20 @@ async def test_buyer_request_drafted_for_needs_evidence(client, db, monkeypatch)
     assert (await client.get("/claims")).json()["total"] == 0  # tidak ada yang dikirim ke kurir
 
 
+async def test_review_time_and_case_audit_log(client, db, monkeypatch):
+    use_scripted_agent(monkeypatch, db)
+    inv_id = (await client.post("/demo/scenario/lost")).json()["investigation_id"]
+    claim_id = (await wait_status(client, inv_id, "completed"))["claim_id"]
+    assert (await client.get("/metrics/summary")).json()["avg_review_sec"] is None
+    r = await client.post(f"/claims/{claim_id}/approve", json={"review_sec": 42.5})
+    assert r.json()["status"] == "submitted"
+    m = (await client.get("/metrics/summary")).json()
+    assert m["avg_review_sec"] == 42.5 and m["reviewed_claims"] == 1
+    logs = (await client.get("/audit-logs", params={"entity_id": [claim_id, inv_id], "limit": 50})).json()
+    assert logs and {log["entity_id"] for log in logs} <= {claim_id, inv_id}
+    assert {"claim_approved", "decision_made"} <= {log["action"] for log in logs}
+
+
 async def test_reject_requires_reason_and_blocks_approve(client, db, monkeypatch):
     use_scripted_agent(monkeypatch, db)
     inv_id = (await client.post("/demo/scenario/lost")).json()["investigation_id"]

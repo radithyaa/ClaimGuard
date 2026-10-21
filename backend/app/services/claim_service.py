@@ -72,7 +72,7 @@ def submit_claim(claim: Claim, courier: str) -> str:
     return f"SIM-{courier.upper()}-{uuid.uuid4().hex[:8].upper()}"
 
 
-def approve(db: Session, claim_id: str, actor: str) -> Claim:
+def approve(db: Session, claim_id: str, actor: str, review_sec: float | None = None) -> Claim:
     claim = _get(db, claim_id)
     shipment = db.get(Shipment, claim.shipment_id)
     ref = submit_claim(claim, shipment.courier if shipment else "kurir")
@@ -80,13 +80,14 @@ def approve(db: Session, claim_id: str, actor: str) -> Claim:
                         submitted_by=actor, submission_ref=ref)
     _resolve_anomaly(db, claim)
     audit.record(db, actor=actor, action="claim_approved", entity="claim", entity_id=claim.id,
-                 payload={"submission_ref": ref, "simulated": True})
+                 payload={"submission_ref": ref, "simulated": True, "review_sec": review_sec})
     return claim
 
 
-def reject(db: Session, claim_id: str, reason: str, actor: str) -> Claim:
+def reject(db: Session, claim_id: str, reason: str, actor: str,
+           review_sec: float | None = None) -> Claim:
     claim = _transition(db, claim_id, status="rejected", reject_reason=reason)
     _resolve_anomaly(db, claim)
     audit.record(db, actor=actor, action="claim_rejected", entity="claim", entity_id=claim.id,
-                 payload={"reason": reason})
+                 payload={"reason": reason, "review_sec": review_sec})
     return claim

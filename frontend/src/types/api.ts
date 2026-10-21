@@ -107,6 +107,9 @@ export interface MetricsSummary {
   submitted_claims: number;
   estimated_value_saved: number;
   avg_processing_sec: number | null;
+  /** Rata-rata waktu keputusan admin (H5). */
+  avg_review_sec?: number | null;
+  reviewed_claims?: number;
   trend: { date: string; anomalies: number; claims: number }[];
   is_simulated: boolean;
 }

@@ -45,8 +45,14 @@ class ClaimPatchIn(BaseModel):
     narrative: str = Field(min_length=20, max_length=8000)
 
 
+class ApproveIn(BaseModel):
+    # H5: lama admin meninjau (detik), diukur di layar Review klaim
+    review_sec: float | None = Field(default=None, ge=0, le=86400)
+
+
 class RejectIn(BaseModel):
     reason: str = Field(min_length=3, max_length=1000)
+    review_sec: float | None = Field(default=None, ge=0, le=86400)
 
 
 class BuyerRequestOut(BaseModel):

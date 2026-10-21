@@ -20,8 +20,11 @@ def record(
     return log
 
 
-def recent(db: Session, *, limit: int = 20, entity: str | None = None) -> Sequence[AuditLog]:
+def recent(db: Session, *, limit: int = 20, entity: str | None = None,
+           entity_ids: list[str] | None = None) -> Sequence[AuditLog]:
     stmt = select(AuditLog)
     if entity:
         stmt = stmt.where(AuditLog.entity == entity)
+    if entity_ids:  # log per kasus: klaim + investigasinya
+        stmt = stmt.where(AuditLog.entity_id.in_(entity_ids))
     return db.scalars(stmt.order_by(AuditLog.created_at.desc()).limit(limit)).all()
