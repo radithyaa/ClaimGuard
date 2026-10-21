@@ -41,7 +41,7 @@ export function ConfirmDialog({
         type="button"
         aria-label="Batal"
         onClick={onCancel}
-        className="absolute inset-0 bg-[#101d28]/30"
+        className="absolute inset-0 bg-overlay"
       />
       <div
         role="alertdialog"
@@ -67,7 +67,7 @@ export function ConfirmDialog({
             onClick={onConfirm}
             disabled={pending}
             className={[
-              "focus-ring inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-surface transition disabled:cursor-not-allowed",
+              "focus-ring inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-on-brand transition disabled:cursor-not-allowed",
               tone === "danger"
                 ? "bg-danger hover:bg-danger/90"
                 : "bg-brand hover:bg-brand-deep",

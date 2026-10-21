@@ -11,7 +11,7 @@ export default function NotFound() {
       </p>
       <Link
         href="/settings"
-        className="focus-ring mt-2 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-surface hover:bg-brand-deep"
+        className="focus-ring mt-2 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-on-brand hover:bg-brand-deep"
       >
         Buka Pengaturan
       </Link>

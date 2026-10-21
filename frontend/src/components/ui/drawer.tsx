@@ -53,7 +53,7 @@ export function Drawer({
         type="button"
         aria-label="Tutup panel"
         onClick={onClose}
-        className="absolute inset-0 bg-[#101d28]/20 backdrop-blur-[1px]"
+        className="absolute inset-0 bg-overlay backdrop-blur-[1px]"
       />
       <div
         ref={panelRef}
@@ -61,7 +61,7 @@ export function Drawer({
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className="relative flex h-full w-full max-w-[480px] flex-col rounded-l-xl border-l border-line-strong bg-surface shadow-[-8px_0_24px_-12px_rgba(16,29,40,0.25)] outline-none"
+        className="relative flex h-full w-full max-w-[480px] flex-col rounded-l-xl border-l border-line-strong bg-surface shadow-2xl shadow-black/30 outline-none"
       >
         <header className="flex items-start justify-between gap-4 border-b border-line p-4">
           <div className="flex min-w-0 items-start gap-3">

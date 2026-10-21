@@ -95,13 +95,41 @@ if [[ "$USE_IMAGE" == "1" ]]; then
   log "Deploy dari image yang sudah ada (tanpa build)"
   deploy_args+=(--image "$IMAGE:latest")
 else
-  log "Build & deploy dari sumber"
-  # PENTING: pada `--source`, `--tag` berarti traffic tag revisi (maks. 46 karakter
-  # gabungan dengan nama service), BUKAN nama image. Jangan dipakai untuk image.
-  deploy_args+=(
-    --source "$SRC"
-    --set-build-env-vars "NEXT_PUBLIC_API_BASE_URL=$API_URL"
-  )
+  # JANGAN pakai `gcloud run deploy --source` untuk image ini.
+  # `--set-build-env-vars` TIDAK diteruskan sebagai docker build ARG, sehingga
+  # NEXT_PUBLIC_API_BASE_URL kosong di bundle dan frontend memanggil originnya
+  # sendiri (/api/v1/... -> 404). Ini pernah terjadi dan sulit terlihat.
+  # Solusinya: build eksplisit via Cloud Build dengan --build-arg, lalu deploy --image.
+  log "Build image dengan build-arg (Cloud Build)"
+  BUILD_CONFIG="$(mktemp)"
+  cat > "$BUILD_CONFIG" <<YAML
+steps:
+- name: gcr.io/cloud-builders/docker
+  args:
+  - build
+  - --build-arg
+  - NEXT_PUBLIC_API_BASE_URL=$API_URL
+  - -t
+  - $IMAGE:latest
+  - .
+images:
+- $IMAGE:latest
+YAML
+
+  if [[ "$DRY_RUN" == "1" ]]; then
+    printf '  gcloud builds submit %s --config=<generated>\n' "$SRC"
+    sed 's/^/    /' "$BUILD_CONFIG"
+    printf '  gcloud run deploy %s %s --image %s:latest\n\n' \
+      "$SERVICE" "${deploy_args[*]}" "$IMAGE"
+    echo "(dry run: tidak dieksekusi)"
+    rm -f "$BUILD_CONFIG"
+    exit 0
+  fi
+
+  gcloud builds submit "$SRC" --project="$PROJECT_ID" \
+    --config="$BUILD_CONFIG" --timeout=25m
+  rm -f "$BUILD_CONFIG"
+  deploy_args+=(--image "$IMAGE:latest")
 fi
 
 printf '\n  gcloud run deploy %s %s\n\n' "$SERVICE" "${deploy_args[*]}"
@@ -110,9 +138,36 @@ if [[ "$DRY_RUN" == "1" ]]; then
   exit 0
 fi
 
-# NEXT_PUBLIC_API_BASE_URL hanya efektif sebagai build arg. Jangan ditambahkan
-# ke --set-env-vars: nilainya sudah dibekukan di bundle saat build.
 gcloud run deploy "$SERVICE" "${deploy_args[@]}"
+
+# Verifikasi bahwa API URL benar-benar ter-inline di bundle.
+# Tanpa cek ini, kegagalan build-arg hanya terlihat sebagai 404 di browser.
+# Catatan: hanya .js yang diambil. Regex lama ikut menangkap /_next/static/media/*.woff2
+# dan item manifest tanpa ekstensi; `curl -fsS` ke chunk kosong ini keluar non-zero,
+# dan pipefail menghentikan while-loop lebih awal -> "curl: Failed writing body"
+# lalu "GAGAL" palsu padahal bundle sudah benar. Chunk yang gagal diunduh dilewati,
+# bukan memutus iterasi. (endpoint API tidak boleh memakai prefiks
+# /_next/static/ agar tidak dianggap chunk).
+URL_TMP="$(gcloud run services describe "$SERVICE" --project="$PROJECT_ID" \
+  --region="$REGION" --format='value(status.url)')"
+log "Verifikasi bundle"
+PAGE_TMP="$(mktemp)"
+if ! curl -fsS --max-time 30 -o "$PAGE_TMP" "$URL_TMP/settings"; then
+  echo "  GAGAL: tidak bisa mengambil $URL_TMP/settings" >&2
+  rm -f "$PAGE_TMP"
+  exit 1
+fi
+if grep -oE '/_next/static/[^"\\]+\.js' "$PAGE_TMP" | sort -u \
+     | while read -r chunk; do
+         curl -fsS --max-time 20 "$URL_TMP$chunk" 2>/dev/null || true
+       done \
+     | grep -qF "$API_URL"; then
+  rm -f "$PAGE_TMP"
+  echo "  OK: bundle memuat $API_URL"
+else
+  echo "  GAGAL: API URL tidak ditemukan di bundle. Periksa build-arg." >&2
+  exit 1
+fi
 
 URL="$(gcloud run services describe "$SERVICE" --project="$PROJECT_ID" \
   --region="$REGION" --format='value(status.url)')"

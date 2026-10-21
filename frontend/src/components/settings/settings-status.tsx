@@ -19,9 +19,9 @@ export type SettingsStatus =
 export function SettingsStatusPill({ status }: { status: SettingsStatus }) {
   const tone =
     status.kind === "dirty"
-      ? "border-[#ffb59799] bg-[#ffdbcd4d] text-[#8e3400]"
+      ? "border-warn-line bg-warn-soft text-warn-ink"
       : status.kind === "error"
-        ? "border-danger/30 bg-danger/5 text-danger"
+        ? "border-danger/30 bg-danger-soft text-danger"
         : "border-line bg-subtle text-ink-muted";
 
   const text =
@@ -74,7 +74,7 @@ export function UnsavedBar({
           <div className="flex items-start gap-2">
             <span
               aria-hidden
-              className={`mt-1.5 size-2 shrink-0 rounded-full ${error ? "bg-danger" : "bg-[#8e3400]"}`}
+              className={`mt-1.5 size-2 shrink-0 rounded-full ${error ? "bg-danger" : "bg-warn-ink"}`}
             />
             <div>
               <p className="text-sm font-semibold text-ink">
@@ -104,7 +104,7 @@ export function UnsavedBar({
             type="button"
             onClick={onSave}
             disabled={!dirty || saving}
-            className="focus-ring inline-flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-surface transition hover:bg-brand-deep disabled:cursor-not-allowed disabled:bg-[#e6e8ea] disabled:text-ink-faint"
+            className="focus-ring inline-flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-on-brand transition hover:bg-brand-deep disabled:cursor-not-allowed disabled:bg-subtle-strong disabled:text-ink-faint"
           >
             {saving && <Spinner />}
             {saving ? "Menyimpan…" : "Simpan perubahan"}

@@ -204,10 +204,10 @@ export function actorName(actor: string): string {
 }
 
 export const CATEGORY_META: Record<AuditCategory, { label: string; tone: string }> = {
-  pelanggaran: { label: "Pelanggaran", tone: "bg-[#fdecec] text-[#ba1a1a]" },
-  keputusan: { label: "Keputusan", tone: "bg-brand/10 text-brand-deep" },
+  pelanggaran: { label: "Pelanggaran", tone: "bg-danger-soft text-danger-ink" },
+  keputusan: { label: "Keputusan", tone: "bg-brand/10 text-brand" },
   konfigurasi: { label: "Konfigurasi", tone: "bg-info-soft text-info-ink" },
-  data: { label: "Data", tone: "bg-[#f1f0ea] text-[#5c5340]" },
+  data: { label: "Data", tone: "bg-neutral-soft text-neutral-ink" },
   sistem: { label: "Sistem", tone: "bg-subtle text-ink-muted" },
 };
 

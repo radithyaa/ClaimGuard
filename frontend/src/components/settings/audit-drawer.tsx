@@ -168,7 +168,7 @@ export function AuditDrawer({
           <button
             type="button"
             onClick={onClose}
-            className="focus-ring rounded-lg bg-brand px-3 py-2 text-sm font-semibold text-surface hover:bg-brand-deep"
+            className="focus-ring rounded-lg bg-brand px-3 py-2 text-sm font-semibold text-on-brand hover:bg-brand-deep"
           >
             Tutup
           </button>

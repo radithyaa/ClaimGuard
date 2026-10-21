@@ -179,7 +179,7 @@ export function ConnectionsForm() {
                         <p className="text-sm font-semibold text-ink">
                           {marketplace.name}
                         </p>
-                        <span className="rounded-full bg-[#ecEEf0] px-2 py-0.5 text-[11px] leading-[16.5px] text-ink-muted">
+                        <span className="rounded-full bg-neutral-soft px-2 py-0.5 text-[11px] leading-[16.5px] text-ink-muted">
                           {marketplace.badge}
                         </span>
                       </div>
@@ -197,7 +197,7 @@ export function ConnectionsForm() {
                         message: `Integrasi ${marketplace.name} belum tersedia pada demo.`,
                       })
                     }
-                    className="focus-ring shrink-0 rounded-lg border border-line bg-subtle px-3 py-1.5 text-sm text-ink-faint transition hover:bg-line/40 disabled:cursor-not-allowed"
+                    className="focus-ring shrink-0 rounded-lg border border-line bg-subtle px-3 py-1.5 text-sm text-ink-faint transition hover:bg-subtle-strong disabled:cursor-not-allowed"
                   >
                     {marketplace.action}
                   </button>
@@ -218,7 +218,7 @@ export function ConnectionsForm() {
                   Terakhir diunggah:{" "}
                   <strong className="font-bold text-ink">{csv.uploadedAt}</strong>{" "}
                   · {csv.activeCount} resi aktif ·{" "}
-                  <code className="rounded bg-[#e0e3e5] px-1.5 py-0.5 text-base text-ink">
+                  <code className="rounded bg-subtle-strong px-1.5 py-0.5 text-base text-ink">
                     {csv.filename}
                   </code>
                 </p>
@@ -277,7 +277,7 @@ export function ConnectionsForm() {
                         <td className="px-3 py-2 text-base text-ink">{camera.offset}</td>
                         <td className="px-3 py-2 text-base text-ink-muted">{camera.calibratedAt}</td>
                         <td className="px-3 py-2">
-                          <span className="rounded-full bg-[#eaf6ee] px-2 text-[11px] leading-[16.5px] text-[#15803d]">
+                          <span className="rounded-full bg-success-soft px-2 text-[11px] leading-[16.5px] text-success-ink">
                             Aktif
                           </span>
                         </td>

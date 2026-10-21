@@ -198,12 +198,12 @@ export function AuditLogView() {
                       className={[
                         "focus-ring rounded-full px-3 py-1 text-[13px] font-medium transition",
                         active
-                          ? "bg-brand text-surface"
+                          ? "bg-brand text-on-brand"
                           : "bg-subtle text-ink-muted hover:text-ink",
                       ].join(" ")}
                     >
                       {CATEGORY_LABEL[key]}
-                      <span className={active ? "ml-1.5 text-surface/70" : "ml-1.5 text-ink-faint"}>
+                      <span className={active ? "ml-1.5 text-on-brand/70" : "ml-1.5 text-ink-faint"}>
                         {count}
                       </span>
                     </button>
@@ -221,7 +221,7 @@ export function AuditLogView() {
                   <button
                     type="button"
                     onClick={() => setLoginOpen(true)}
-                    className="focus-ring rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-surface hover:bg-brand-deep"
+                    className="focus-ring rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-on-brand hover:bg-brand-deep"
                   >
                     Masuk sebagai admin
                   </button>

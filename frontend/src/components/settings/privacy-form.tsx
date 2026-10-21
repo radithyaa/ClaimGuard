@@ -157,7 +157,7 @@ export function PrivacyForm() {
                         Kamera Meja 02 · 14.12.08 WIB
                       </p>
                     </div>
-                    <span className="rounded border border-line bg-[#ecEEf0] px-2 py-0.5 text-[11px] leading-[16.5px] text-ink-muted">
+                    <span className="rounded border border-line bg-neutral-soft px-2 py-0.5 text-[11px] leading-[16.5px] text-ink-muted">
                       Rekaman Terproteksi
                     </span>
                   </div>
@@ -168,7 +168,7 @@ export function PrivacyForm() {
                         "inline-flex items-center gap-2 rounded px-4 py-2.5 text-[13px] font-medium shadow-sm transition-colors",
                         maskPii
                           ? "bg-ink-muted text-surface"
-                          : "bg-brand text-surface",
+                          : "bg-brand text-on-brand",
                       ].join(" ")}
                     >
                       <Icon src="icon-data-masked.svg" className="h-3.5 w-4" />

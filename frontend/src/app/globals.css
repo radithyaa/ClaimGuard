@@ -97,6 +97,38 @@
   --sidebar-accent-foreground: oklch(0.97 0.01 200);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.72 0.11 190);
+
+  /* Token halaman Pengaturan/Log audit — varian terang. */
+  --cg-canvas: #f8f9fb;
+  --cg-surface: #ffffff;
+  --cg-subtle: #f2f4f6;
+  --cg-subtle-strong: #e6e8ea;
+  --cg-overlay: rgb(16 29 40 / 0.3);
+
+  --cg-ink: #191c1e;
+  --cg-ink-muted: #53606d;
+  --cg-ink-faint: #6e7977;
+  --cg-nav: #3e4947;
+
+  --cg-line: rgba(189, 201, 198, 0.4);
+  --cg-line-strong: rgba(189, 201, 198, 0.5);
+  --cg-field: #bdc9c6;
+
+  --cg-brand: #0f766e;
+  --cg-brand-deep: #005c55;
+  --cg-on-brand: #ffffff;
+  --cg-info-soft: #d4e1f1;
+  --cg-info-ink: #101d28;
+  --cg-danger: #ba1a1a;
+  --cg-danger-soft: #fdecec;
+  --cg-danger-ink: #ba1a1a;
+  --cg-warn-soft: #ffdbcd4d;
+  --cg-warn-line: #ffb59799;
+  --cg-warn-ink: #8e3400;
+  --cg-success-soft: #eaf6ee;
+  --cg-success-ink: #15803d;
+  --cg-neutral-soft: #eceef0;
+  --cg-neutral-ink: #5c5340;
 }
 
 .dark {
@@ -138,6 +170,38 @@
   --sidebar-accent-foreground: oklch(0.97 0.01 200);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.72 0.11 190);
+
+  /* Token halaman Pengaturan/Log audit — varian gelap. */
+  --cg-canvas: oklch(0.17 0.015 220);
+  --cg-surface: oklch(0.21 0.02 220);
+  --cg-subtle: oklch(0.25 0.02 215);
+  --cg-subtle-strong: oklch(0.31 0.02 215);
+  --cg-overlay: rgb(4 10 14 / 0.6);
+
+  --cg-ink: oklch(0.96 0.005 200);
+  --cg-ink-muted: oklch(0.76 0.015 210);
+  --cg-ink-faint: oklch(0.65 0.015 210);
+  --cg-nav: oklch(0.85 0.01 205);
+
+  --cg-line: rgb(255 255 255 / 0.1);
+  --cg-line-strong: rgb(255 255 255 / 0.16);
+  --cg-field: rgb(255 255 255 / 0.2);
+
+  --cg-brand: oklch(0.78 0.11 190);
+  --cg-brand-deep: oklch(0.68 0.1 190);
+  --cg-on-brand: oklch(0.18 0.03 210);
+  --cg-info-soft: oklch(0.34 0.045 250);
+  --cg-info-ink: oklch(0.9 0.035 245);
+  --cg-danger: oklch(0.74 0.16 22);
+  --cg-danger-soft: oklch(0.31 0.07 22);
+  --cg-danger-ink: oklch(0.86 0.1 22);
+  --cg-warn-soft: oklch(0.34 0.055 45);
+  --cg-warn-line: rgb(255 181 151 / 0.3);
+  --cg-warn-ink: oklch(0.85 0.1 55);
+  --cg-success-soft: oklch(0.3 0.06 155);
+  --cg-success-ink: oklch(0.83 0.12 155);
+  --cg-neutral-soft: oklch(0.3 0.02 200);
+  --cg-neutral-ink: oklch(0.82 0.035 90);
 }
 
 @layer base {
@@ -145,33 +209,51 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background font-sans text-foreground;
+  }
+
+  /* Gambar & SVG berwarna tetap (ikon /figma) harus mengikuti tema seperti di halaman lain. */
+  html.dark img[src^="/figma/"] {
+    mix-blend-mode: screen;
   }
 }
 
 /*
  * Token & kelas halaman Pengaturan/Log audit (dibawa dari branch dev/a, frame Figma "Pengaturan").
- * Nama tidak bertabrakan dengan token shadcn di atas. Warna tetap (belum ada varian gelap).
+ * Nama tidak bertabrakan dengan token shadcn di atas. Nilai mengikuti tema aktif: varian
+ * terang didefinisikan di `:root`, varian gelap di `.dark` (lihat blok di bawah).
  */
-@theme {
-  --color-canvas: #f8f9fb;
-  --color-surface: #ffffff;
-  --color-subtle: #f2f4f6;
+@theme inline {
+  --color-canvas: var(--cg-canvas);
+  --color-surface: var(--cg-surface);
+  --color-subtle: var(--cg-subtle);
+  --color-subtle-strong: var(--cg-subtle-strong);
+  --color-overlay: var(--cg-overlay);
 
-  --color-ink: #191c1e;
-  --color-ink-muted: #53606d;
-  --color-ink-faint: #6e7977;
-  --color-nav: #3e4947;
+  --color-ink: var(--cg-ink);
+  --color-ink-muted: var(--cg-ink-muted);
+  --color-ink-faint: var(--cg-ink-faint);
+  --color-nav: var(--cg-nav);
 
-  --color-line: rgba(189, 201, 198, 0.4);
-  --color-line-strong: rgba(189, 201, 198, 0.5);
-  --color-field: #bdc9c6;
+  --color-line: var(--cg-line);
+  --color-line-strong: var(--cg-line-strong);
+  --color-field: var(--cg-field);
 
-  --color-brand: #0f766e;
-  --color-brand-deep: #005c55;
-  --color-info-soft: #d4e1f1;
-  --color-info-ink: #101d28;
-  --color-danger: #ba1a1a;
+  --color-brand: var(--cg-brand);
+  --color-brand-deep: var(--cg-brand-deep);
+  --color-on-brand: var(--cg-on-brand);
+  --color-info-soft: var(--cg-info-soft);
+  --color-info-ink: var(--cg-info-ink);
+  --color-danger: var(--cg-danger);
+  --color-danger-soft: var(--cg-danger-soft);
+  --color-danger-ink: var(--cg-danger-ink);
+  --color-warn-soft: var(--cg-warn-soft);
+  --color-warn-line: var(--cg-warn-line);
+  --color-warn-ink: var(--cg-warn-ink);
+  --color-success-soft: var(--cg-success-soft);
+  --color-success-ink: var(--cg-success-ink);
+  --color-neutral-soft: var(--cg-neutral-soft);
+  --color-neutral-ink: var(--cg-neutral-ink);
 
   --text-h2: 1.625rem;
   --text-h2--line-height: 2rem;
@@ -218,6 +300,6 @@ input[type="number"] {
 
 @layer utilities {
   .focus-ring {
-    @apply outline-none focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas;
+    @apply outline-none focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:ring-offset-2 focus-visible:ring-offset-surface;
   }
 }
