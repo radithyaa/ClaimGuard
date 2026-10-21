@@ -134,7 +134,9 @@ def enforce_min_confidence(callback_context) -> None:
     if not raw:
         return
     ev = Evaluation.model_validate(raw)
-    threshold = get_settings().min_confidence
+    from app.services.settings_service import get_runtime  # impor lambat: hindari siklus
+
+    threshold = get_runtime().min_confidence
     if ev.decision != "needs_evidence" and ev.confidence < threshold:
         data = ev.model_dump()
         data.update(

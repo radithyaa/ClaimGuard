@@ -6,6 +6,7 @@ Dipakai langsung oleh tool vision dan policy_extractor. Agen ADK memanggil model
 
 import asyncio
 import logging
+import os
 from functools import lru_cache
 from typing import TypeVar
 
@@ -19,6 +20,18 @@ T = TypeVar("T", bound=BaseModel)
 
 class AIUnavailable(Exception):
     """Gemini tidak dapat dipakai (belum dikonfigurasi, timeout, kuota, atau error layanan)."""
+
+
+def configure_vertex_env() -> bool:
+    """Arahkan model agen ADK ke Vertex AI dari config, agar cukup mengisi GCP_PROJECT.
+    Mengembalikan False bila Vertex belum dikonfigurasi."""
+    s = get_settings()
+    if not s.gcp_project:
+        return False
+    os.environ.setdefault("GOOGLE_GENAI_USE_VERTEXAI", "TRUE")
+    os.environ.setdefault("GOOGLE_CLOUD_PROJECT", s.gcp_project)
+    os.environ.setdefault("GOOGLE_CLOUD_LOCATION", s.gcp_location)
+    return True
 
 
 @lru_cache
