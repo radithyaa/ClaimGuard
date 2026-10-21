@@ -7,6 +7,10 @@ Pembaca: Backend B (seed), Frontend B (rekaman video), Backend A (prompt & cache
 > `backend/data/mock/shipments.json`. Bagian 9 memuat diff yang harus dijalankan. Nomor resi
 > skenario **tidak boleh diubah** setelah cache AI direkam (lihat §8).
 
+> **Pembaruan 22 Okt:** keputusan C2 diganti dari `needs_evidence` menjadi keputusan baru
+> `seller_error` (Evaluator), agar fitur "Minta bukti ke pembeli" (F6) tidak muncul untuk
+> kasus yang kesalahannya di pihak penjual. C2 sudah diterapkan di `shipments.json`.
+
 ---
 
 ## 1. Prinsip
@@ -40,7 +44,7 @@ Pembaca: Backend B (seed), Frontend B (rekaman video), Backend A (prompt & cache
 | `JNE0012345678` | A — paket hilang | CCTV-01 detik 40 | `claim` | ✅ JNE | SLA |
 | `JT7788990011` | B — barang rusak | CCTV-01 detik 95 + unboxing inhaler | `claim` | ✅ J&T | Laporan rusak |
 | `SCP5566778899` | C1 — retur curang | CCTV-01 detik 150 + unboxing kaos | `fraud_suspect` | ❌ | Sengketa retur |
-| `SCP8899770011` | C2 — penjual salah kirim | CCTV-02 detik 30 + unboxing kaos hitam | `needs_evidence` | ❌ | Sengketa retur |
+| `SCP8899770011` | C2 — penjual salah kirim | CCTV-02 detik 30 + unboxing kaos hitam | `seller_error` | ❌ | Sengketa retur |
 | `JNE0099887766` | D — tertahan tanpa CCTV | tidak ada | `needs_evidence` | ❌ | SLA |
 
 **Lima keputusan demo** membuktikan tiga hal: sistem bisa **menagih** (A, B), **menolak**
@@ -703,7 +707,7 @@ Jalankan setelah seed. Semua harus lulus sebelum rekaman cache.
 | 5 | Investigasi A | `claim_drafted`, klaim `pending_approval`, klip 25 detik terputar |
 | 6 | Investigasi B | `claim_drafted`, 3 evidence, verdict `damaged` |
 | 7 | Investigasi C1 | `fraud_suspect`, **0 klaim**, anomali `resolved` |
-| 8 | Investigasi C2 | `needs_evidence`, **0 klaim**, anomali kembali `open` |
+| 8 | Investigasi C2 | `seller_error`, **0 klaim**, anomali ditutup (`resolved`) |
 | 9 | Investigasi D | `needs_evidence`, error tool `no_pack_scan` tercatat sebagai temuan, bukan crash |
 | 10 | Total waktu A (live) | < 30 detik (NFR-01) |
 | 11 | `pytest -q` | Lulus setelah 4 test di §10 diperbarui untuk 17 resi dan nilai klaim 149000 |
