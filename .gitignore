@@ -10,9 +10,8 @@ __pycache__/
 .ruff_cache/
 node_modules/
 .next/
-# backend/data/cache/ SENGAJA di-commit: rekaman AI untuk fallback demo (SRS 13)
 frontend/
-infra/
 backend/data/samples/
 backend/env.cloud.yaml
 *.egg-info/
+
