@@ -1,0 +1,15 @@
+# Jangan kirim artefak lokal ke konteks build: bisa menimpa node_modules/.next
+# hasil build di dalam image dan membuat hasilnya tidak deterministik.
+node_modules
+.next
+out
+coverage
+.git
+.gitignore
+.env*
+!.env.example
+*.tsbuildinfo
+next-env.d.ts
+npm-debug.log*
+Dockerfile
+.dockerignore

@@ -31,17 +31,19 @@ SA_RUN_EMAIL="$SA_RUN@$PROJECT_ID.iam.gserviceaccount.com"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 DRY_RUN=0
+USE_IMAGE=0
 TRAFFIC_ARGS=()
 for arg in "$@"; do
   case "$arg" in
     --dry-run)    DRY_RUN=1 ;;
     --no-traffic) TRAFFIC_ARGS+=(--no-traffic) ;;
+    --image)      USE_IMAGE=1 ;;   # lewati build: ~2 menit, bukan 5-15 menit
     *) echo "Argumen tidak dikenal: $arg" >&2; exit 1 ;;
   esac
 done
 
 [[ -f "$ROOT/backend/Dockerfile" ]] || { echo "backend/Dockerfile tidak ada" >&2; exit 1; }
-if [[ ! -f "$ROOT/backend/app/main.py" ]]; then
+if [[ "$USE_IMAGE" == "0" && ! -f "$ROOT/backend/app/main.py" ]]; then
   echo "PERINGATAN: backend/app/main.py belum ada (milik Backend B)." >&2
   echo "Container akan gagal start karena Dockerfile menjalankan 'app.main:app'." >&2
   echo "Lanjutkan hanya untuk menguji build (Ctrl+C untuk batal)." >&2
@@ -83,7 +85,6 @@ SECRETS+=",DEMO_PASSWORD=claimguard-demo-password:latest"
 # Cloud SQL Proxy sidecar disediakan oleh --add-cloudsql-instances (socket /cloudsql/<conn>).
 CMD=(gcloud run deploy "$SERVICE"
   --project "$PROJECT_ID"
-  --source "$ROOT/backend"
   --region "$REGION"
   --service-account "$SA_RUN_EMAIL"
   --add-cloudsql-instances "$DB_CONN"
@@ -99,6 +100,12 @@ CMD=(gcloud run deploy "$SERVICE"
   --allow-unauthenticated
   --quiet
 )
+# --image: lewati build. Pakai ini untuk perubahan env/config saja.
+if [[ "$USE_IMAGE" == "1" ]]; then
+  CMD+=(--image "$REGION-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/$SERVICE:latest")
+else
+  CMD+=(--source "$ROOT/backend")
+fi
 if [[ ${#TRAFFIC_ARGS[@]} -gt 0 ]]; then
   CMD+=("${TRAFFIC_ARGS[@]}")
 fi

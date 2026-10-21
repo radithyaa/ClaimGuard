@@ -48,13 +48,25 @@ class Settings(BaseSettings):
     ai_cache_dir: str = "./data/cache"
     gemini_timeout_sec: float = 25.0
     min_confidence: float = 0.6
+    medium_confidence: float = 0.4
     max_tool_calls: int = 8
     max_llm_calls: int = 20
     investigation_timeout_sec: float = 120.0
 
+    # Privasi & retensi (tab Pengaturan > Privasi dan data)
+    video_retention_days: int = 30
+    mask_pii: bool = True
+    deadline_reminder_hours: list[int] = [72, 24, 6]
+
+    # Batas marketplace (tab Pengaturan > Koneksi dan sumber data)
+    shopee_connected: bool = False
+    tiktok_shop_connected: bool = False
+
     # Monitoring & data demo
     scan_interval_min: int = 5
-    sla_grace_hours: int = 0
+    # 0 = aturan lama: bandingkan langsung dengan sla_deadline. Nilai > 0 menunda penandaan
+    # sebesar N jam, melengkapi ambang tertahan per kurir (tabel courier_thresholds).
+    sla_grace_hours: int = 3
     scheduler_enabled: bool = False
     seed_on_startup: bool = True
     mock_data_dir: str = "./data/mock"

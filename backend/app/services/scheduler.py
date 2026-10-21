@@ -6,7 +6,11 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.db.session import session_scope
 from app.services import monitoring
-from app.services.settings_service import RuntimeSettings, get_runtime
+from app.services.settings_service import (
+    RuntimeSettings,
+    get_runtime,
+    hold_map,
+)
 
 log = logging.getLogger(__name__)
 _JOB_ID = "monitoring_scan"
@@ -17,7 +21,9 @@ def _scan_job() -> None:
     try:
         with session_scope() as db:
             grace = get_runtime(db).sla_grace_hours
-            scanned, created = monitoring.scan(db, grace_hours=grace)
+            scanned, created = monitoring.scan(
+                db, grace_hours=grace, hold_days_by_courier=hold_map(db)
+            )
         log.info("scan terjadwal: %d resi, %d anomali baru", scanned, len(created))
     except Exception:
         log.exception("scan terjadwal gagal")
