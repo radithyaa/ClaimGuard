@@ -125,6 +125,8 @@ export interface AppSettings {
   scan_interval_min: number;
   sla_grace_hours: number;
   min_confidence: number;
+  /** Ambang label "Sedang"; di bawahnya "Perlu dicek". */
+  medium_confidence?: number;
   ai_mode: "live" | "auto" | "cache";
   scheduler_enabled: boolean;
 }

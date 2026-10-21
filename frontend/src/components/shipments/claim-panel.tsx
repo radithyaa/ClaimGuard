@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
+import { ClaimDeadline } from "@/components/claims/claim-deadline";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api-client";
@@ -32,7 +33,13 @@ export function ClaimPanel({ shipment: s }: { shipment: ShipmentDetail }) {
 
   return (
     <aside className="flex flex-col gap-5 rounded-xl border bg-card p-6">
-      <div>
+      {anomaly && (
+        <div>
+          <p className="text-sm text-muted-foreground">Sisa waktu klaim</p>
+          <ClaimDeadline deadline={s.claim_deadline} showDate className="mt-1 text-2xl [&_svg]:size-5" />
+        </div>
+      )}
+      <div className={anomaly ? "border-t pt-5" : undefined}>
         <p className="text-sm text-muted-foreground">Batas SLA</p>
         {done ? (
           <p className="mt-1 flex items-center gap-2"><Info className="size-4 text-muted-foreground" aria-hidden /> Pengiriman sudah selesai</p>

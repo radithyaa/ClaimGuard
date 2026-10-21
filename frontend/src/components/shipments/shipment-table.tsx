@@ -4,6 +4,7 @@ import { AlertTriangle, Clock } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+import { ClaimDeadline } from "@/components/claims/claim-deadline";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { COURIER_LABEL, formatRelative, formatRupiah } from "@/lib/format";
@@ -39,7 +40,7 @@ export function ShipmentTable({ rows, loading }: { rows: Shipment[]; loading?: b
           <TableHead className="hidden md:table-cell">Status pengiriman</TableHead>
           <TableHead>Anomali</TableHead>
           <TableHead className="hidden text-right lg:table-cell">Nilai barang</TableHead>
-          <TableHead className="hidden pr-4 md:table-cell">Batas SLA</TableHead>
+          <TableHead className="hidden pr-4 md:table-cell">Sisa waktu</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -89,7 +90,15 @@ export function ShipmentTable({ rows, loading }: { rows: Shipment[]; loading?: b
                 </TableCell>
                 <TableCell className="hidden py-4 text-right tabular-nums lg:table-cell">{formatRupiah(s.item_value)}</TableCell>
                 <TableCell className="hidden py-4 pr-4 md:table-cell">
-                  <SlaCell s={s} />
+                  {/* Resi beranomali: tenggat klaim kurir (F3); selainnya batas SLA pengiriman */}
+                  {s.active_anomaly ? (
+                    <span className="flex flex-col">
+                      <ClaimDeadline deadline={s.claim_deadline} />
+                      <span className="text-xs text-muted-foreground">tenggat klaim</span>
+                    </span>
+                  ) : (
+                    <SlaCell s={s} />
+                  )}
                 </TableCell>
               </TableRow>
             ))}

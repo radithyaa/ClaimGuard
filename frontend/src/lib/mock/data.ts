@@ -163,10 +163,10 @@ export const claims: ClaimSummary[] = [
     claim_deadline: null,
   },
   // Klaim yang sudah diputuskan, agar laporan uang pulih punya isi
-  { id: "clm-002", shipment_id: "shp-002", tracking_number: "JT7788990011", courier: "jnt", status: "submitted", confidence: 0.91, claim_value: 275000, created_at: d("2026-10-18T04:10:00Z"), is_simulated: true, case_type: null, claim_deadline: null },
-  { id: "clm-003", shipment_id: "shp-008", tracking_number: "JT6677889900", courier: "jnt", status: "submitted", confidence: 0.84, claim_value: 210000, created_at: d("2026-10-16T07:20:00Z"), is_simulated: true, case_type: null, claim_deadline: null },
-  { id: "clm-004", shipment_id: "shp-006", tracking_number: "SCP1029384756", courier: "sicepat", status: "submitted", confidence: 0.8, claim_value: 89000, created_at: d("2026-10-14T02:45:00Z"), is_simulated: true, case_type: null, claim_deadline: null },
-  { id: "clm-005", shipment_id: "shp-003", tracking_number: "SCP5566778899", courier: "sicepat", status: "rejected", confidence: 0.55, claim_value: 620000, created_at: d("2026-10-19T09:30:00Z"), is_simulated: true, case_type: null, claim_deadline: null },
+  { id: "clm-002", shipment_id: "shp-002", tracking_number: "JT7788990011", courier: "jnt", status: "submitted", confidence: 0.91, claim_value: 275000, created_at: d("2026-10-18T04:10:00Z"), is_simulated: true, case_type: "damaged", claim_deadline: null },
+  { id: "clm-003", shipment_id: "shp-008", tracking_number: "JT6677889900", courier: "jnt", status: "submitted", confidence: 0.84, claim_value: 210000, created_at: d("2026-10-16T07:20:00Z"), is_simulated: true, case_type: "lost", claim_deadline: null },
+  { id: "clm-004", shipment_id: "shp-006", tracking_number: "SCP1029384756", courier: "sicepat", status: "submitted", confidence: 0.8, claim_value: 89000, created_at: d("2026-10-14T02:45:00Z"), is_simulated: true, case_type: "damaged", claim_deadline: null },
+  { id: "clm-005", shipment_id: "shp-003", tracking_number: "SCP5566778899", courier: "sicepat", status: "rejected", confidence: 0.55, claim_value: 620000, created_at: d("2026-10-19T09:30:00Z"), is_simulated: true, case_type: "return_fraud", claim_deadline: null },
 ];
 
 export const policies: CourierPolicy[] = [
@@ -209,6 +209,7 @@ export const settings: AppSettings = {
   scan_interval_min: 5,
   sla_grace_hours: 0,
   min_confidence: 0.6,
+  medium_confidence: 0.4,
   ai_mode: "auto",
   scheduler_enabled: false,
 };

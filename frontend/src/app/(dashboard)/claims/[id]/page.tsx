@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { ClaimActions } from "@/components/claims/claim-actions";
+import { ClaimDeadline } from "@/components/claims/claim-deadline";
 import { EvidencePanel } from "@/components/investigation/evidence-panel";
 import { Button } from "@/components/ui/button";
 import { SimulatedBadge } from "@/components/ui/simulated-badge";
@@ -114,9 +115,17 @@ export default function ClaimReviewPage() {
             <Link href={`/investigations/${c.investigation_id}`} className="text-[13px] text-primary hover:underline">Lihat investigasi</Link>
           </div>
         </div>
-        <span className="flex items-center gap-1.5 rounded-lg border bg-card px-3 py-1.5 text-sm">
+        <div className="flex flex-wrap items-center gap-2">
+          {pending && (
+            <span className="flex items-center gap-2 rounded-lg border bg-card px-3 py-1.5 text-sm">
+              <span className="text-muted-foreground">Sisa waktu klaim</span>
+              <ClaimDeadline deadline={c.claim_deadline} />
+            </span>
+          )}
+          <span className="flex items-center gap-1.5 rounded-lg border bg-card px-3 py-1.5 text-sm">
           <Clock className="size-4" aria-hidden /> Waktu tinjau {timer}{pending ? "" : " (selesai)"}
         </span>
+        </div>
       </header>
 
       {c.status === "submitted" && (
