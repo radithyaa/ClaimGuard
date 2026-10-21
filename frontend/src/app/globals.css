@@ -1,0 +1,88 @@
+@import "tailwindcss";
+
+/* Design token ClaimGuard — diambil dari file Figma "ClaimGuard" (frame Pengaturan). */
+@theme {
+  /* Permukaan */
+  --color-canvas: #f8f9fb;
+  --color-surface: #ffffff;
+  --color-subtle: #f2f4f6;
+
+  /* Teks */
+  --color-ink: #191c1e;
+  --color-ink-muted: #53606d;
+  --color-ink-faint: #6e7977;
+  --color-nav: #3e4947;
+
+  /* Garis */
+  --color-line: rgba(189, 201, 198, 0.4);
+  --color-line-strong: rgba(189, 201, 198, 0.5);
+  --color-field: #bdc9c6;
+
+  /* Aksen */
+  --color-brand: #0f766e;
+  --color-brand-deep: #005c55;
+  --color-info-soft: #d4e1f1;
+  --color-info-ink: #101d28;
+  --color-danger: #ba1a1a;
+
+  --font-sans: var(--font-plus-jakarta), ui-sans-serif, system-ui, sans-serif;
+
+  --text-h2: 1.625rem;
+  --text-h2--line-height: 2rem;
+  --text-h2--letter-spacing: -0.025em;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Input angka tanpa spinner bawaan: Figma memakai field datar. */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+@layer components {
+  /* Kartu seksi: radius 12px, border tipis, padding 24px (Figma "Section - Card"). */
+  .card {
+    @apply rounded-xl border border-line-strong bg-surface p-6;
+  }
+
+  /* Field berdiri sendiri: tinggi 40px, radius 8px. */
+  .field {
+    @apply h-10 w-full rounded-lg border border-field bg-surface px-3 text-base text-ink
+      outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/15
+      disabled:cursor-not-allowed disabled:bg-subtle disabled:text-ink-muted;
+  }
+
+  /* Label kecil tebal di atas kontrol. */
+  .field-label {
+    @apply text-sm font-semibold text-ink;
+  }
+
+  .hint {
+    @apply text-[13px] leading-[18px] text-ink-muted;
+  }
+
+  .eyebrow {
+    @apply text-[13px] font-medium uppercase leading-[18px] tracking-[0.05em] text-ink-muted;
+  }
+}
+
+@layer utilities {
+  .focus-ring {
+    @apply outline-none focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas;
+  }
+}
