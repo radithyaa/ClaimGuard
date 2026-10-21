@@ -3,16 +3,18 @@ name = "claimguard-backend"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
-    "fastapi>=0.118,<0.120",
-    "uvicorn[standard]>=0.37,<0.38",
-    "pydantic>=2.11,<3",
+    # Batas mengikuti kebutuhan google-adk 2.11; versi persis dikunci di requirements.lock
+    "fastapi>=0.133,<1",
+    "uvicorn[standard]>=0.34,<1",
+    "pydantic>=2.12,<3",
     "pydantic-settings>=2.11,<3",
     "sqlalchemy>=2.0.44,<2.1",
-    "psycopg[binary]>=3.2,<3.3",
+    "psycopg[binary]>=3.2,<4",
     "google-adk==2.11.0",
-    "google-genai>=1.40",
+    "google-genai>=2.19,<3",
     "google-cloud-storage>=3.4,<4",
     "apscheduler>=3.11,<4",
+    "httpx>=0.27,<1",
 ]
 
 [project.optional-dependencies]
