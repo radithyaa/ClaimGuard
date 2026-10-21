@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Response
+from fastapi import APIRouter, Request, Response
 
 from app.api.deps import DB, User
 from app.core.config import get_settings
 from app.core.errors import AppError
-from app.core.security import COOKIE_NAME, check_password, create_token
+from app.core.security import COOKIE_NAME, DEMO_USER, check_password, create_token, verify_token
 from app.schemas.common import ERROR_RESPONSES
-from app.schemas.metrics import LoginIn, LoginOut
+from app.schemas.metrics import LoginIn, LoginOut, SessionOut
 from app.services import audit, scheduler
 from app.services.settings_service import (
     CourierThresholdIn,
@@ -68,3 +68,27 @@ def login(body: LoginIn, response: Response) -> LoginOut:
     response.set_cookie(COOKIE_NAME, token, max_age=ttl, httponly=True, secure=cloud,
                         samesite="none" if cloud else "lax")
     return LoginOut(token=token, expires_in=ttl)
+
+
+@router.get("/auth/session", response_model=SessionOut, tags=["auth"])
+def read_session(request: Request) -> SessionOut:
+    """Status sesi dari cookie httpOnly, dipakai penjaga rute di server (bukan di browser).
+
+    Tidak memakai dependency `User` karena sesi yang tidak valid bukan error: endpoint ini
+    sendiri yang melaporkan `authenticated: false` tanpa 401.
+    """
+    required = get_settings().auth_required
+    if not required:
+        return SessionOut(authenticated=True, user=DEMO_USER, auth_required=False)
+    header = request.headers.get("authorization", "")
+    bearer = header.removeprefix("Bearer ").strip() if header.startswith("Bearer ") else None
+    user = verify_token(bearer or request.cookies.get(COOKIE_NAME))
+    return SessionOut(authenticated=user is not None, user=user, auth_required=True)
+
+
+@router.post("/auth/logout", status_code=204, tags=["auth"])
+def logout(response: Response) -> None:
+    """Menghapus cookie sesi. Aman dipanggil tanpa sesi (idempoten)."""
+    cloud = get_settings().env == "cloud"
+    response.delete_cookie(COOKIE_NAME, secure=cloud, samesite="none" if cloud else "lax",
+                           httponly=True)

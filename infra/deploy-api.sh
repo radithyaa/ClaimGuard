@@ -60,8 +60,26 @@ ENV_VARS+=",GEMINI_MODEL=$GEMINI_MODEL"
 ENV_VARS+=",AI_MODE=$AI_MODE"
 ENV_VARS+=",AUTH_REQUIRED=true"
 # CORS: diisi setelah URL frontend tersedia (NFR-06).
+# PENTING: `cors_origins` bertipe list[str] di config.py, dan pydantic-settings mem-parsing
+# env List sebagai JSON. Nilai mentah seperti `https://a.run.app` membuat container GAGAL
+# START (SettingsError: error parsing value for field "cors_origins"). Terima daftar
+# dipisah koma lalu ubah ke JSON array. Nilai yang sudah JSON dibiarkan apa adanya.
 if [[ -n "${CORS_ORIGINS:-}" ]]; then
-  ENV_VARS+=",CORS_ORIGINS=$CORS_ORIGINS"
+  if [[ "${CORS_ORIGINS:0:1}" == "[" ]]; then
+    CORS_JSON="$CORS_ORIGINS"
+  else
+    CORS_JSON="["
+    IFS=',' read -ra _origins <<< "$CORS_ORIGINS"
+    for _o in "${_origins[@]}"; do
+      _o="${_o//[[:space:]]/}"          # buang spasi di sekitar koma
+      _o="${_o%/}"                     # trailing slash bukan origin yang sah
+      [[ -n "$_o" ]] || continue
+      [[ "$CORS_JSON" == "[" ]] || CORS_JSON+=","
+      CORS_JSON+="\"$_o\""
+    done
+    CORS_JSON+="]"
+  fi
+  ENV_VARS+=",CORS_ORIGINS=$CORS_JSON"
 fi
 # Dibaca ADK untuk memanggil model (NFR-04: tanpa API key, lewat service account).
 ENV_VARS+=",GOOGLE_GENAI_USE_VERTEXAI=TRUE"

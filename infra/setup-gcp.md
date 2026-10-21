@@ -71,6 +71,8 @@ Yang dibuat:
 | Cloud SQL | `claimguard-pg` (Postgres 16, `db-f1-micro`, `asia-southeast2`) | provisioning 5–10 menit |
 | Database/user | `claimguard` / `claimguard` | password acak → Secret Manager |
 | Secret | `claimguard-db-password`, `claimguard-demo-password` | nilai demo wajib diganti di console |
+| Secret | `claimguard-session-secret`, `claimguard-database-url` | dipasang `deploy-api.sh`; dibuat di §5.1/§8.2 bila belum ada |
+| WIF | pool `github`, provider `github` | hanya bila memakai auto-deploy §8 |
 
 **Catatan keamanan password:** script membuat password acak lalu menyalinnya ke Secret Manager sebagai teks. Script **tidak** mencetak password. Kalau butuh nilai aslinya untuk dijalankan lokal:
 
@@ -136,6 +138,16 @@ Pasang sebagai env var service (bukan di repo). Field kiri = nama di `config.py`
 | `video_tools` memakai `tempfile` | TMPDIR default, dibersihkan `tini` |
 
 ### 5.1 Siapkan secret URL database (sekali)
+
+`deploy-api.sh` memasang tiga secret (lihat `SECRETS` di script): `claimguard-database-url`,
+`claimguard-session-secret`, dan `claimguard-demo-password`. Selain db-password/demo-password
+yang dibuat `--create-infra`, dua secret berikut harus ada **sebelum** deploy pertama:
+
+```bash
+# SESSION_SECRET: string acak; config.py menolak start bila memakai default dev.
+head -c 48 /dev/urandom | base64 | tr -d '/+=' \
+  | gcloud secrets create claimguard-session-secret --replication-policy=automatic --data-file=-
+```
 
 `DATABASE_URL` berisi password, jadi tidak boleh masuk `--set-env-vars`.
 
@@ -209,7 +221,91 @@ CORS_ORIGINS='["https://claimguard-web-xxxx.a.run.app"]' ./infra/deploy-api.sh -
 
 ---
 
-## 6. Verifikasi
+## 8. Auto-deploy dari GitHub (opsional)
+
+`.github/workflows/deploy.yml` men-deploy **API dan web** setiap push ke `main` (dan bisa
+dipicu manual dari tab Actions). Workflow memanggil `infra/deploy-api.sh` dan
+`infra/deploy-web.sh` — flag Cloud Run tetap satu sumber kebenaran di script itu.
+
+```mermaid
+flowchart LR
+    push[push ke main] --> auth[GitHub OIDC ke GCP]
+    auth --> apiJob[job api]
+    auth --> webJob[job web]
+    apiJob --> apiScript[deploy-api.sh]
+    webJob --> resolve[ambil URL claimguard-api]
+    resolve --> webScript[deploy-web.sh]
+```
+
+Kedua job berjalan paralel dan tidak saling menunggu, karena URL Cloud Run tidak berubah
+antar revisi service yang sama. `concurrency` membuat push terbaru membatalkan run yang
+sedang berjalan.
+
+**Tanpa service account key JSON** (NFR-04). Autentikasi memakai Workload Identity
+Federation: GitHub menandatangani token OIDC, GCP menukarnya menjadi kredensial sementara
+untuk service account deploy.
+
+### 8.1 Siapkan IAM (sekali, oleh PIC)
+
+```bash
+# Butuh GitHub CLI + `gh auth login` (dipakai untuk membaca repository_id).
+export PROJECT_ID=hackathon-primestep-18
+./infra/setup-gcp.sh --github radithyaa/ClaimGuard
+
+# Tanpa gh: ambil angka `id` dari https://api.github.com/repos/radithyaa/ClaimGuard
+REPO_ID=<angka> ./infra/setup-gcp.sh --github radithyaa/ClaimGuard
+```
+
+Yang dibuat:
+
+| Resource | Isi |
+| --- | --- |
+| Service account | `claimguard-github-deployer` |
+| WIF pool/provider | `projects/<proj>/locations/global/workloadIdentityPools/github/providers/github` |
+| Attribute condition | `assertion.repository_id == <id repo> && assertion.ref == 'refs/heads/main'` |
+| Role deployer | `run.admin`, `cloudbuild.builds.editor`, `artifactregistry.admin`, `serviceusage.serviceUsageAdmin`, `cloudsql.client`, `storage.objectAdmin`, `secretmanager.secretAccessor`, `aiplatform.user`, `logging.viewer`, `viewer` |
+| Role tambahan | `iam.serviceAccountUser` **pada** `claimguard-run` dan `claimguard-web` (wajib untuk `--service-account`), `iam.workloadIdentityUser` pada SA deploy |
+
+Repositori lain (fork) tidak bisa memakai provider ini: `repository_id` ikut dicek, bukan
+hanya nama `owner/repo`. Jangan menambahkan `roles/editor` atau `roles/owner`.
+
+### 8.2 Variable di GitHub
+
+Settings > Secrets and variables > Actions > **Variables** (bukan Secrets — tidak ada nilai rahasia):
+
+| Variable | Nilai |
+| --- | --- |
+| `GCP_PROJECT_ID` | `hackathon-primestep-18` |
+| `GCP_REGION` | `asia-southeast2` (opsional; default script) |
+| `GCP_WORKLOAD_IDENTITY_PROVIDER` | dicetak `setup-gcp.sh --github` |
+| `GCP_SERVICE_ACCOUNT` | `claimguard-github-deployer@<project>.iam.gserviceaccount.com` |
+| `CORS_ORIGINS` | `["https://claimguard-web-xxx.a.run.app"]` untuk API (`deploy-api.sh`); kosongkan bila belum ada |
+
+### 8.3 Urutan deploy pertama
+
+`deploy-web.sh` membutuhkan `API_URL`, dan workflow mengambilnya dari service `claimguard-api`.
+Jadi sekali sebelum mengandalkan CI:
+
+```bash
+./infra/setup-gcp.sh --create-infra          # bila belum
+# buat claimguard-session-secret dan claimguard-database-url (§5.1)
+./infra/deploy-api.sh
+```
+
+Setelah API punya URL, isi `CORS_ORIGINS` = URL web di variable GitHub. Untuk deploy pertama,
+URL web bisa diambil dari log job `web` setelah selesai.
+
+### 8.4 Batasan
+
+| Hal | Artinya |
+| --- | --- |
+| Build 5–15 menit per job | Dua build paralel (API + web) memakai kuota Cloud Build bersamaan |
+| Kode rusak tetap ter-deploy | Workflow ini deploy, bukan gate. Tambahkan test/lint sebagai job terpisah bila ingin memblokir |
+| Server web bisa 500 di halaman yang memanggil API saat prerender | `NEXT_PUBLIC_API_BASE_URL` kosong saat `next build` -> `localhost:8000`; workflow selalu mengisinya lewat `API_URL` |
+
+---
+
+## 8. Verifikasi
 
 ```bash
 ./infra/setup-gcp.sh --verify
@@ -228,7 +324,7 @@ Kalau perintah di atas 403, role `aiplatform.user` atau billing belum aktif.
 
 ---
 
-## 7. Yang tetap jalan tanpa GCP
+## 9. Yang tetap jalan tanpa GCP
 
 Dev lokal tidak butuh apa pun dari dokumen ini:
 

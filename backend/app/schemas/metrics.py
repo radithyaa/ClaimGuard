@@ -40,6 +40,14 @@ class LoginOut(BaseModel):
     expires_in: int
 
 
+class SessionOut(BaseModel):
+    """Status sesi untuk dicek di server (route handler Next.js). Token tidak pernah dikirim."""
+
+    authenticated: bool
+    user: str | None = None
+    auth_required: bool
+
+
 class HealthOut(BaseModel):
     status: str
     db: str

@@ -4,10 +4,10 @@ import { useQuery } from "@tanstack/react-query";
 import { LogOut, User } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 
 import { api } from "@/lib/api-client";
-import { clearSession } from "@/lib/auth";
+import { useLogout } from "@/hooks/use-logout";
 import { cn } from "@/lib/utils";
 
 import { NAV_GROUPS } from "./nav";
@@ -64,11 +64,7 @@ export function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
 }
 
 export function UserCard() {
-  const router = useRouter();
-  function logout() {
-    clearSession();
-    router.replace("/login");
-  }
+  const logout = useLogout();
   return (
     <div className="flex items-center gap-2 border-t p-3">
       <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground">
@@ -80,7 +76,7 @@ export function UserCard() {
       </div>
       <button
         type="button"
-        onClick={logout}
+        onClick={() => void logout()}
         aria-label="Keluar"
         title="Keluar"
         className="grid size-8 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"

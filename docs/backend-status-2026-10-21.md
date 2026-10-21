@@ -1,23 +1,23 @@
 # Status Backend vs SRS — verifikasi 21 Okt 2026
 
-Pembaca: seluruh tim. Acuan: [SRS.md](SRS.md) v2.3. Hasil verifikasi kode, test, run, build,
+Pembaca: seluruh tim. Acuan: [SRS.md](SRS.md) v2.4. Hasil verifikasi kode, test, run, build,
 dan kesiapan deploy. Semua angka di bawah berasal dari eksekusi nyata, bukan estimasi.
 
 ## Ringkasan
 
 | Aspek | Hasil | Catatan |
 | --- | --- | --- |
-| Test | **42/42 lulus** (8.4 s) | Tanpa Gemini; LLM diganti rekaman (ADK pipeline + API end-to-end) |
+| Test | **49/49 lulus** (±9 s) | Tanpa Gemini; LLM diganti rekaman (ADK pipeline + API end-to-end) |
 | Lint | `ruff check` bersih | `app data scripts tests` |
 | Run lokal | **Bisa** | Boot, auto-seed 15 resi, `POST /monitoring/scan` menandai 4 anomali, 200 OK |
 | SSE & cancel | **Bisa** | Replay `Last-Event-ID`, cancel saat run → 202, cancel saat selesai → 409 |
 | Build Docker | **Bisa** | `python:3.12-slim` + ffmpeg, image ±1 menit |
 | Run container | **Bisa** | `ENV=cloud` dengan secret diset → `/health` hijau; tanpa secret → gagal cepat (sesuai desain) |
 | Deploy Cloud Run | **Belum diverifikasi** | Aset ada (`infra/deploy-api.sh`), butuh GCP + billing; secret `DEMO_PASSWORD`/`SESSION_SECRET` belum dipasang skrip |
-| Kontrak API | **Lengkap** | 23 endpoint SRS hadir di `openapi.json` (25 operasi) |
-| Skema Postgres | **Valid** | 12 tabel; DDL `create_all` dikompilasi dengan dialect `psycopg` tanpa error |
+| Kontrak API | **Lengkap** | **32 operasi / 27 path** sesuai SRS §6 (endpoint baru: impor CSV, `/connections`, ambang per kurir, hapus & purge investigasi) |
+| Skema Postgres | **Valid** | 13 tabel; DDL `create_all` dikompilasi dengan dialect `psycopg` tanpa error |
 | Auth demo (FR-19) | **Bisa** | `AUTH_REQUIRED=true`: endpoint tulis → 401 tanpa token; login mengembalikan token HMAC |
-| Frontend | **Tidak ada** | Folder `frontend/` belum dibuat |
+| Frontend | **Ada** | `frontend/` (Next.js App Router) sudah terisi: dashboard, resi, investigasi live, klaim, laporan, kebijakan kurir, demo, pengaturan. Lihat SRS §5 dan §19 untuk celah yang tersisa |
 
 ## Kesesuaian dengan SRS
 
@@ -68,14 +68,16 @@ dan kesiapan deploy. Semua angka di bawah berasal dari eksekusi nyata, bukan est
 
 ```text
 $ .venv/bin/python -m pytest -q
-42 passed, 12 warnings in 8.36s
+49 passed, 15 warnings in 8.78s
 
 $ .venv/bin/ruff check app data scripts tests
 All checks passed!
 
 $ curl /api/v1/health            -> {"status":"ok","db":"ok","ai_mode":"auto","storage":"local"}
 $ curl -X POST /api/v1/monitoring/scan -> scanned: 15, 4 anomali baru
-$ curl /api/v1/openapi.json      -> 21 path, 25 operasi
+$ curl /api/v1/openapi.json      -> 27 path, 32 operasi
+
+# Dijalankan 21 Okt 2026 (sebelum sinkronisasi dokumen):
 $ docker build -t claimguard-api:test .   -> sukses
 $ docker run (ENV=cloud, secret diset) ... /health -> 200
 $ AUTH_REQUIRED=true; POST /investigations (tanpa login) -> 401; GET /shipments -> 200
@@ -84,11 +86,13 @@ $ ENV=cloud + DATABASE_URL postgresql+psycopg://... -> engine postgresql/psycopg
 
 ## Rekomendasi urutan kerja
 
-1. Aktifkan billing → isi `GCP_PROJECT`, `GEMINI_MODEL` → jalankan ketiga skenario dalam `AI_MODE=live`
-   → commit `data/cache/`.
-2. Rekam/unggah `data/samples/*.mp4` dan verifikasi scan packing jatuh di detik 40/95/150.
-3. Tambahkan `DEMO_PASSWORD` dan `SESSION_SECRET` ke `--set-secrets` di `infra/deploy-api.sh`, lalu
-   `./infra/deploy-api.sh --dry-run`.
-4. Siapkan bucket GCS (`GCS_BUCKET`) dan unggah `data/samples/*` sebelum deploy.
-5. Tambahkan rate limit sederhana pada endpoint pemicu AI (NFR-06, Should).
-6. Mulai frontend (tidak ada di repo ini; folder `frontend/` juga ada di `.gitignore`).
+> **Diperbarui 22 Okt 2026.** Daftar risiko dan celah yang berlaku sekarang ada di
+> [SRS.md §19](SRS.md#19-celah-yang-diketahui-known-gaps). Ringkasnya:
+>
+> 1. Rekam `data/samples/*.mp4` lalu ketiga skenario di `AI_MODE=live` → commit `data/cache/`.
+> 2. Verifikasi deploy Cloud Run (`infra/deploy-api.sh`) beserta `DEMO_PASSWORD`/`SESSION_SECRET`.
+> 3. Tambahkan rate limit pada endpoint pemicu AI (NFR-06, Should).
+> 4. Lengkapi halaman `/settings/account` yang tertaut tetapi belum ada.
+>
+> Langkah "mulai frontend" sudah selesai: `frontend/` terisi. Catatan bahwa folder itu ada di
+> `.gitignore` sudah **tidak berlaku** — frontend ikut di-commit.

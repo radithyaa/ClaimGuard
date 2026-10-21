@@ -25,6 +25,9 @@ SERVICE="${SERVICE:-claimguard-web}"
 SA_WEB="${SA_WEB:-claimguard-web}"
 REPO="${REPO:-cloud-run-source-deploy}"
 API_URL="${API_URL:?Set API_URL dulu: export API_URL=https://claimguard-api-xxx.run.app}"
+# Kata sandi untuk tombol "Coba sebagai juri". Kosong = tombol disembunyikan.
+# Nilai ini masuk ke bundle browser, jadi hanya untuk mode demo.
+DEMO_PASSWORD="${DEMO_PASSWORD:-}"
 PORT="${PORT:-8080}"
 
 SA_WEB_EMAIL="$SA_WEB@$PROJECT_ID.iam.gserviceaccount.com"
@@ -109,6 +112,8 @@ steps:
   - build
   - --build-arg
   - NEXT_PUBLIC_API_BASE_URL=$API_URL
+  - --build-arg
+  - NEXT_PUBLIC_DEMO_PASSWORD=$DEMO_PASSWORD
   - -t
   - $IMAGE:latest
   - .
@@ -142,6 +147,12 @@ gcloud run deploy "$SERVICE" "${deploy_args[@]}"
 
 # Verifikasi bahwa API URL benar-benar ter-inline di bundle.
 # Tanpa cek ini, kegagalan build-arg hanya terlihat sebagai 404 di browser.
+#
+# PENTING: pindai /login, bukan halaman di dalam dashboard. Seluruh halaman dashboard
+# butuh sesi dan mengembalikan 307 ke /login, sehingga halaman itu tidak memuat chunk JS
+# aplikasi -> pemeriksaan selalu "GAGAL" palsu meski bundle sudah benar. /login juga
+# memuat chunk `app/layout`, tempat NEXT_PUBLIC_API_BASE_URL di-inline.
+#
 # Catatan: hanya .js yang diambil. Regex lama ikut menangkap /_next/static/media/*.woff2
 # dan item manifest tanpa ekstensi; `curl -fsS` ke chunk kosong ini keluar non-zero,
 # dan pipefail menghentikan while-loop lebih awal -> "curl: Failed writing body"
@@ -152,8 +163,8 @@ URL_TMP="$(gcloud run services describe "$SERVICE" --project="$PROJECT_ID" \
   --region="$REGION" --format='value(status.url)')"
 log "Verifikasi bundle"
 PAGE_TMP="$(mktemp)"
-if ! curl -fsS --max-time 30 -o "$PAGE_TMP" "$URL_TMP/settings"; then
-  echo "  GAGAL: tidak bisa mengambil $URL_TMP/settings" >&2
+if ! curl -fsS --max-time 30 -o "$PAGE_TMP" "$URL_TMP/login"; then
+  echo "  GAGAL: tidak bisa mengambil $URL_TMP/login" >&2
   rm -f "$PAGE_TMP"
   exit 1
 fi
@@ -174,13 +185,14 @@ URL="$(gcloud run services describe "$SERVICE" --project="$PROJECT_ID" \
 
 log "Selesai"
 printf '  Web : %s\n  API : %s\n\n' "$URL" "$API_URL"
-printf '  Cek halaman: %s/settings\n\n' "$URL"
+printf '  Cek halaman: %s/login\n\n' "$URL"
 printf '  PENTING: set CORS_ORIGINS backend agar sama dengan origin web:\n'
 printf '    ./infra/deploy-api.sh   (dengan CORS_ORIGINS=%s)\n' "$URL"
 
 # Smoke test ringan; gagal di sini tidak membatalkan deploy, hanya memberi sinyal.
-if curl -fsS -o /dev/null --max-time 30 "$URL/settings"; then
-  echo "  Smoke test: /settings OK"
+# /settings butuh login (307 ke /login), jadi yang diperiksa adalah /login.
+if curl -fsS -o /dev/null --max-time 30 "$URL/login"; then
+  echo "  Smoke test: /login OK"
 else
   echo "  Smoke test GAGAL. Cek: gcloud run services logs read $SERVICE --region $REGION --limit 50" >&2
 fi

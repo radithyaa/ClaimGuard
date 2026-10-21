@@ -14,6 +14,7 @@
 #   export PROJECT_ID=hackathon-primestep-18
 #   ./infra/setup-gcp.sh --create-infra        # sekali saja (butuh sqladmin/storage admin)
 #   ./infra/setup-gcp.sh --deployer you@x.com  # beri IAM ke anggota tim yang deploy
+#   ./infra/setup-gcp.sh --github owner/repo   # izinkan GitHub Actions deploy (OIDC, tanpa key)
 #
 # JANGAN menjalankan --create-infra bila project dipakai bersama tim lain
 # tanpa persetujuan PIC. Lihat infra/setup-gcp.md.
@@ -29,13 +30,18 @@ BUCKET="${BUCKET:-${PROJECT_ID}-claimguard-media}"
 SA_API="${SA_API:-claimguard-api}"
 SA_RUN="${SA_RUN:-claimguard-run}"           # runtime service (yang dipakai Cloud Run)
 SA_WEB="${SA_WEB:-claimguard-web}"
+SA_DEPLOY="${SA_DEPLOY:-claimguard-github-deployer}"  # dipakai workflow .github/workflows/deploy.yml
 BILLING_ACCOUNT="${BILLING_ACCOUNT:-}"
+# WIF pool/provider: keduanya tidak punya biaya dan aman dipertahankan.
+WIF_POOL="${WIF_POOL:-github}"
+WIF_PROVIDER="${WIF_PROVIDER:-github}"
 
 GCP="$PROJECT_ID"
 DB_CONN="$PROJECT_ID:$REGION:$DB_INSTANCE"
 SA_API_EMAIL="$SA_API@$PROJECT_ID.iam.gserviceaccount.com"
 SA_RUN_EMAIL="$SA_RUN@$PROJECT_ID.iam.gserviceaccount.com"
 SA_WEB_EMAIL="$SA_WEB@$PROJECT_ID.iam.gserviceaccount.com"
+SA_DEPLOY_EMAIL="$SA_DEPLOY@$PROJECT_ID.iam.gserviceaccount.com"
 
 log()  { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
 skip() { printf '    (sudah ada) %s\n' "$*"; }
@@ -77,6 +83,8 @@ enable_apis() {
     logging.googleapis.com \
     monitoring.googleapis.com \
     iam.googleapis.com \
+    iamcredentials.googleapis.com \
+    sts.googleapis.com \
     --project="$PROJECT_ID"
 }
 
@@ -210,6 +218,108 @@ grant_deployer() {
   done
 }
 
+grant_deploy_sa() {
+  log "Role untuk service account deploy CI ($SA_DEPLOY)"
+  # Harus bisa meniru SA runtime: melampirkan --service-account ke Cloud Run
+  # butuh iam.serviceAccounts.actAs pada SA tersebut.
+  for sa_email in "$SA_RUN_EMAIL" "$SA_WEB_EMAIL"; do
+    gcloud iam service-accounts add-iam-policy-binding "$sa_email" \
+      --project="$PROJECT_ID" \
+      --member="serviceAccount:$SA_DEPLOY_EMAIL" \
+      --role="roles/iam.serviceAccountUser" \
+      --condition=None >/dev/null
+    printf '    %-45s <- %s\n' "$SA_DEPLOY_EMAIL" "roles/iam.serviceAccountUser on $sa_email"
+  done
+
+  # Cakupan sama dengan --deployer; sengaja tanpa roles/editor atau roles/owner.
+  for role in \
+    roles/run.admin \
+    roles/cloudbuild.builds.editor \
+    roles/artifactregistry.admin \
+    roles/serviceusage.serviceUsageAdmin \
+    roles/cloudsql.client \
+    roles/storage.objectAdmin \
+    roles/secretmanager.secretAccessor \
+    roles/aiplatform.user \
+    roles/logging.viewer \
+    roles/viewer ; do
+    bind_sa_role "$SA_DEPLOY_EMAIL" "$role"
+  done
+}
+
+grant_github_wif() {
+  local repo="${1:-}"
+  local repo_id="" pool_full provider_full issuer
+
+  [[ "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || {
+    echo "Pakai: $0 --github owner/repo (contoh: radithyaa/ClaimGuard)" >&2
+    exit 1
+  }
+  # Repo berbeda bisa memakai nama yang sama (fork/rename), jadi atribut yang
+  # dipercaya adalah `repository_id`, bukan `repository` saja.
+  if [[ -n "${REPO_ID:-}" ]]; then
+    repo_id="$REPO_ID"
+  else
+    repo_id="$(gh api "repos/$repo" --jq .id 2>/dev/null)" || {
+      echo "Tidak bisa membaca repo $repo lewat 'gh'. Butuh GitHub CLI + login (gh auth login)." >&2
+      echo "Tanpa gh: lihat angka pada https://api.github.com/repos/$repo lalu jalankan" >&2
+      echo "  REPO_ID=<angka> ./infra/setup-gcp.sh --github $repo" >&2
+      exit 1
+    }
+  fi
+  [[ -n "$repo_id" ]] || { echo "repository_id kosong untuk $repo" >&2; exit 1; }
+
+  pool_full="projects/$PROJECT_ID/locations/global/workloadIdentityPools/$WIF_POOL"
+  provider_full="$pool_full/providers/$WIF_PROVIDER"
+  issuer="https://token.actions.githubusercontent.com"
+
+  log "Workload Identity Federation untuk GitHub Actions"
+  if gcloud iam workload-identity-pools describe "$WIF_POOL" \
+      --project="$PROJECT_ID" --location=global >/dev/null 2>&1; then
+    skip "pool $WIF_POOL"
+  else
+    gcloud iam workload-identity-pools create "$WIF_POOL" \
+      --project="$PROJECT_ID" --location=global \
+      --display-name="GitHub Actions"
+  fi
+
+  if gcloud iam workload-identity-pools providers describe "$WIF_PROVIDER" \
+      --project="$PROJECT_ID" --location=global \
+      --workload-identity-pool="$WIF_POOL" >/dev/null 2>&1; then
+    skip "provider $WIF_PROVIDER"
+  else
+    gcloud iam workload-identity-pools providers create-oidc "$WIF_PROVIDER" \
+      --project="$PROJECT_ID" --location=global \
+      --workload-identity-pool="$WIF_POOL" \
+      --display-name="GitHub OIDC" \
+      --issuer-uri="$issuer" \
+      --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.repository_id=assertion.repository_id,attribute.ref=assertion.ref" \
+      --attribute-condition="assertion.repository_id == '$repo_id' && assertion.ref == 'refs/heads/main'"
+  fi
+
+  # Hanya workflow di main repo ini (dan hanya dari main) yang boleh memakai SA.
+  gcloud iam service-accounts add-iam-policy-binding "$SA_DEPLOY_EMAIL" \
+    --project="$PROJECT_ID" \
+    --role="roles/iam.workloadIdentityUser" \
+    --member="principalSet://iam.googleapis.com/$pool_full/attribute.repository_id/$repo_id" \
+    --condition=None >/dev/null
+  printf '    %s <- roles/iam.workloadIdentityUser (repo_id %s)\n' "$SA_DEPLOY_EMAIL" "$repo_id"
+
+  cat <<EOF
+
+  Isi GitHub Settings > Secrets and variables > Actions > Variables:
+    GCP_PROJECT_ID                 = $PROJECT_ID
+    GCP_REGION                     = $REGION
+    GCP_WORKLOAD_IDENTITY_PROVIDER = $provider_full
+    GCP_SERVICE_ACCOUNT            = $SA_DEPLOY_EMAIL
+    CORS_ORIGINS                   = ["https://claimguard-web-xxx.<region>.run.app"]
+                                     (URL web setelah deploy pertama; lihat §8.4)
+
+  Tidak ada service account key JSON yang dibuat atau diunduh (NFR-04).
+
+EOF
+}
+
 print_summary() {
   cat <<EOF
 
@@ -256,6 +366,15 @@ main() {
       [[ -n "${2:-}" ]] || { echo "Pakai: $0 --deployer user:email@domain" >&2; exit 1; }
       grant_deployer "$2"
       ;;
+    --github)
+      [[ -n "${2:-}" ]] || { echo "Pakai: $0 --github owner/repo" >&2; exit 1; }
+      require_project
+      check_billing || exit 1
+      enable_apis
+      ensure_service_account "$SA_DEPLOY" "ClaimGuard CI deployer (GitHub Actions)"
+      grant_deploy_sa
+      grant_github_wif "$2"
+      ;;
     --verify)
       log "Verifikasi"
       gcloud services list --enabled --project="$PROJECT_ID" \
@@ -266,7 +385,7 @@ main() {
         --format='value(name,state,region)' 2>/dev/null || echo "    instance belum ada"
       ;;
     *)
-      sed -n '2,22p' "$0"
+      sed -n '2,23p' "$0"
       ;;
   esac
 }

@@ -1,10 +1,32 @@
+import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
 import { AuthGuard } from "@/components/auth/auth-guard";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { Topbar } from "@/components/layout/topbar";
+import { getServerSession } from "@/lib/server-session";
 
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+/**
+ * Semua halaman di bawah `(dashboard)` butuh sesi. Pengecekan dilakukan di SERVER sebelum
+ * HTML dikirim, sehingga konten tidak pernah sempat berkedip bagi pengguna yang belum masuk.
+ *
+ * PENTING (pernah gagal di produksi):
+ * 1. Layout ini WAJIB dinamis. Tanpa `force-dynamic`, Next.js dapat menyajikan hasil render
+ *    lama yang masih berisi `redirect('/login')`, sehingga pengguna yang BARU SAJA login
+ *    langsung terlempar kembali ke halaman login.
+ * 2. Redirect membawa `?next=` agar setelah masuk pengguna kembali ke halaman yang dituju,
+ *    bukan selalu ke dashboard.
+ */
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const session = await getServerSession();
+
+  if (!session.authenticated) {
+    redirect("/login");
+  }
+
   return (
     <AuthGuard>
       <div className="flex min-h-dvh">

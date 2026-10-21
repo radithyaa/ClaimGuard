@@ -1,6 +1,6 @@
 # Backend A: Status & Kontrak untuk Backend B
 
-Pembaca: Backend B (runner, API, deploy) dan PIC GCP. Acuan: [SRS.md](SRS.md) v2.3.
+Pembaca: Backend B (runner, API, deploy) dan PIC GCP. Acuan: [SRS.md](SRS.md) v2.4.
 
 ## Status (Rabu 21 Okt)
 

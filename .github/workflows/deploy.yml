@@ -1,0 +1,106 @@
+# =============================================================================
+# Deploy otomatis ClaimGuard ke Cloud Run setiap push ke `main`.
+#
+#   push ke main ──┬─> api  : infra/deploy-api.sh
+#                  └─> web  : infra/deploy-web.sh  (API_URL = URL service api)
+#
+# Kedua job berjalan paralel. Ia memakai script yang sama dengan deploy manual,
+# jadi flag Cloud Run (--min-instances 1, --no-cpu-throttling, dst.) tetap satu
+# sumber kebenaran di `infra/`.
+#
+# Autentikasi TANPA service account key JSON (NFR-04): GitHub OIDC -> Workload
+# Identity Federation. Siapkan sekali dengan `./infra/setup-gcp.sh --github`.
+#
+# Prasyarat (nilai disimpan sebagai GitHub *variable*, bukan secret):
+#   GCP_PROJECT_ID           hackathon-primestep-18
+#   GCP_REGION               asia-southeast2            (default script)
+#   GCP_WORKLOAD_IDENTITY_PROVIDER
+#                            projects/<no>/locations/global/workloadIdentityPools/github/providers/github
+#   GCP_SERVICE_ACCOUNT      claimguard-github-deployer@<project>.iam.gserviceaccount.com
+#
+# Panduan lengkap: infra/setup-gcp.md §8.
+# =============================================================================
+name: Deploy to Cloud Run
+
+on:
+  push:
+    branches: [main]
+  # Tombol "Run workflow" di tab Actions untuk deploy ulang tanpa commit.
+  workflow_dispatch:
+
+# Dua push beruntun: yang lama dibatalkan, jangan sampai revisi lama menimpa baru.
+concurrency:
+  group: deploy-main
+  cancel-in-progress: true
+
+# `id-token: write` adalah inti OIDC — tanpa itu google-github-actions/auth gagal.
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  REGION: ${{ vars.GCP_REGION || 'asia-southeast2' }}
+
+jobs:
+  api:
+    name: Deploy API (claimguard-api)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      # Image dibangun Cloud Build dari backend/Dockerfile, bukan oleh runner.
+      # CORS_ORIGINS dikirim agar origin web (yang URL-nya tidak berubah antar
+      # deploy) tidak hilang saat --set-env-vars berikutnya diterapkan (NFR-06).
+      - name: Deploy cloud run service
+        env:
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          REGION: ${{ vars.GCP_REGION || 'asia-southeast2' }}
+          CORS_ORIGINS: ${{ vars.CORS_ORIGINS }}
+        run: ./infra/deploy-api.sh
+
+  web:
+    name: Deploy Web (claimguard-web)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      # NEXT_PUBLIC_API_BASE_URL di-inline saat build, jadi harus URL nyata
+      # sebelum build. URL Cloud Run tidak berubah antar revisi service yang
+      # sama, sehingga aman diambil di sini. Gagal cepat bila service API belum
+      # pernah dideploy (mis. rahasia GCP belum lengkap).
+      - name: Resolve API URL
+        run: |
+          set -euo pipefail
+          api_url="$(gcloud run services describe claimguard-api \
+            --project "$PROJECT_ID" --region "$REGION" --format='value(status.url)')"
+          if [[ -z "$api_url" ]]; then
+            echo "::error::claimguard-api belum punya URL. Deploy API dulu (infra/deploy-api.sh)."
+            exit 1
+          fi
+          echo "API_URL=$api_url" >> "$GITHUB_ENV"
+          echo "API_URL=$api_url"
+
+      - name: Deploy cloud run service
+        env:
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          REGION: ${{ vars.GCP_REGION || 'asia-southeast2' }}
+        run: ./infra/deploy-web.sh

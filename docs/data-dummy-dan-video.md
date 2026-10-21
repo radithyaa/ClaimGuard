@@ -1,6 +1,6 @@
 # Data Dummy & Rencana Video ClaimGuard
 
-Versi 1.0 · 21 Oktober 2026 · Acuan: [SRS.md](SRS.md) v2.3 §8, §13, §14, §15.5
+Versi 1.0 · 21 Oktober 2026 · Acuan: [SRS.md](SRS.md) v2.4 §8, §13, §14, §15.5
 Pembaca: Backend B (seed), Frontend B (rekaman video), Backend A (prompt & cache).
 
 > **Status dokumen.** Isi tabel di bagian 3–4 adalah **rencana yang belum diterapkan** ke

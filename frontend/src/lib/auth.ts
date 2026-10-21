@@ -1,6 +1,14 @@
-// Sesi login demo (FR-19). Cookie httpOnly dari backend tinggal di domain backend sehingga
-// tidak terbaca di sini; token dari /auth/login disimpan dan dikirim sebagai header Bearer,
-// karena cookie lintas situs di Cloud Run bisa diblokir browser.
+// Sesi login demo (FR-19).
+//
+// Sumber kebenaran ada di COOKIE httpOnly yang diset backend (`cg_session`). Cookie itu tidak
+// terbaca JavaScript, jadi pengecekan di sisi server memakai `GET /auth/session`.
+//
+// Token juga disimpan di storage browser sebagai cadangan, karena di Cloud Run frontend dan
+// backend berada di domain berbeda dan cookie lintas situs dapat diblokir browser. Token
+// dikirim ulang lewat header Bearer (EventSource SSE tidak bisa mengirim header, jadi SSE
+// tetap bergantung pada cookie).
+//
+// `remember` = localStorage (bertahan setelah browser ditutup), selain itu sessionStorage.
 
 const KEY = "cg_session";
 
@@ -55,6 +63,23 @@ export function clearSession() {
 
 export const getToken = () => read()?.token ?? null;
 export const hasSession = () => read() !== null;
+
+/**
+ * Info sesi untuk ditampilkan di halaman Akun. Token TIDAK pernah dikembalikan.
+ * `remember` menandakan sesi disimpan di localStorage (bertahan setelah browser ditutup)
+ * alih-alih sessionStorage.
+ */
+export function sessionInfo(): { expiresAt: Date; remember: boolean } | null {
+  const session = read();
+  if (!session) return null;
+  let remember = false;
+  try {
+    remember = localStorage.getItem(KEY) !== null;
+  } catch {
+    /* storage diblokir: anggap sesi tab saja */
+  }
+  return { expiresAt: new Date(session.exp), remember };
+}
 
 /** Ke halaman login, membawa halaman asal agar bisa kembali setelah masuk. */
 export function redirectToLogin() {

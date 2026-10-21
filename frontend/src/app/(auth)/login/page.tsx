@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import Image from "next/image";
+import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
 import { LoginForm } from "@/components/auth/login-form";
+import { getServerSession } from "@/lib/server-session";
 
 export const metadata: Metadata = { title: "Masuk" };
 // Tanggal hari ini harus dihitung per request, bukan saat build
@@ -10,7 +12,11 @@ export const dynamic = "force-dynamic";
 
 const STEPS = ["Deteksi", "Kumpulkan bukti", "Susun draf", "Anda setujui"];
 
-export default function LoginPage() {
+export default async function LoginPage() {
+  // Sudah punya sesi: jangan tampilkan formulir login lagi.
+  const session = await getServerSession();
+  if (session.authenticated) redirect("/dashboard");
+
   const today = new Intl.DateTimeFormat("id-ID", { weekday: "long", day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Jakarta" })
     .format(new Date())
     .replace(/\./g, "");

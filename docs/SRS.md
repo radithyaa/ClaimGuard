@@ -1,8 +1,10 @@
 # SRS ClaimGuard — Sistem Agentic AI Otonom untuk Otomatisasi Klaim Logistik UMKM
 
-Versi 2.3 · 21 Oktober 2026 · Status: Acuan implementasi hackathon (menggantikan v2.2)
+Versi 2.4 · 22 Oktober 2026 · Status: **disinkronkan dengan kode (`main` @ `a03321b`)** — menggantikan v2.3
 
-> **Ringkasan perubahan v2.3** (detail di bagian 18): orkestrasi memakai **Google ADK** (wajib dari panitia), sistem **di-deploy ke Google Cloud** (Cloud Run + Cloud SQL + Cloud Storage + Vertex AI), Monitoring dipisah dari agen investigasi, HITL dijamin lewat **status klaim di database** (bukan interrupt graf), dan kepemilikan berkas yang bentrok dibereskan.
+> **Ringkasan perubahan v2.4** (detail di bagian 18): dokumen diselaraskan dengan implementasi nyata. Delapan operasi API yang sudah berjalan tetapi belum tercatat (impor CSV, koneksi/drift kamera, hapus & purge investigasi, ambang per kurir) ditambahkan; FR-23 s.d. FR-27 baru mendokumentasikan fitur yang **sudah ada di kode** (tenggat klaim, laporan uang pulih, impor CSV, koneksi & drift kamera, ambang tertahan per kurir); struktur direktori §9 ditulis ulang dari berkas nyata; tabel frontend §5 dan matriks keterlacakan §17 diperbarui; bagian 19 baru mencatat celah yang diketahui. Tidak ada perubahan arsitektur agen dari v2.3.
+>
+> **Cara menjaga dokumen tidak drift:** setiap PR yang mengubah endpoint, tabel, rute halaman, atau `RuntimeSettings` **wajib** memperbarui bagian 4, 5, 6, atau 8 yang terkait. Kontrak API yang berlaku adalah `backend/openapi.json`; bila keduanya berbeda, `openapi.json` menang dan SRS yang harus diperbaiki.
 
 ## 1. Pendahuluan
 
@@ -14,12 +16,16 @@ Dokumen ini mendefinisikan spesifikasi perangkat lunak ClaimGuard: kebutuhan fun
 
 ClaimGuard mengotomatisasi pendeteksian anomali pengiriman, investigasi bukti (pemotongan CCTV gudang dan analisis Vision AI), hingga penyusunan draf tiket klaim ganti rugi bagi penjual online dan UMKM. Sistem terdiri dari **Monitoring Agent** (layanan aturan deterministik), **Investigation Agent** dan **Action Agent** (agen ADK berbasis Gemini), dengan **Approval Dashboard** sebagai kendali Human-in-the-Loop (HITL).
 
+Di sekeliling alur agen ada lapisan operasional yang sudah berjalan: **tenggat klaim per resi** (FR-23), **laporan uang pulih** (FR-24), **impor resi dari CSV** (FR-25), **koneksi marketplace & deteksi drift jam kamera** (FR-26), dan **ambang tertahan per kurir** (FR-27).
+
 **Di luar lingkup (out of scope) untuk versi hackathon:**
 
 - Pengiriman klaim sungguhan ke API kurir (hanya simulasi "submit" dan status internal).
 - Integrasi CCTV real-time (RTSP); memakai file video sampel di Cloud Storage.
+- Sinkronisasi otomatis ke Shopee/TikTok Shop. Status koneksi di FR-26 adalah **penanda konfigurasi dan tampilan**, bukan integrasi API marketplace.
 - Multi-tenant penuh dan sistem penagihan.
 - Skala horizontal backend (lebih dari satu instance Cloud Run), lihat NFR-13.
+- Pemisahan peran pengguna (admin vs peninjau). Saat ini satu password demo dengan hak setara (FR-19).
 
 ### 1.3 Definisi dan Singkatan
 
@@ -76,11 +82,13 @@ Sistem berbasis web. Backend FastAPI menjalankan agen ADK dan tools lokal (FFmpe
 │          │ REST + SSE                                                  │
 │  Cloud Run "claimguard-api"  (FastAPI, min=1 max=1, no-cpu-throttling) │
 │   ├─ Monitoring service ── aturan SLA deterministik ──► tabel anomalies│
+│   │                        (sla_grace_hours atau hold_days per kurir)   │
 │   ├─ Investigation runner ── ADK Runner (satu run per resi)            │
 │   │     SequentialAgent: Investigator → Evaluator → Drafter            │
 │   │     tools: get_case_context, clip_cctv_video (FFmpeg),             │
 │   │            analyze_media, get_courier_policy                       │
 │   ├─ Claim service ── approve / reject / submit_claim (simulasi)       │
+│   ├─ Operasional ── tenggat klaim · impor CSV · koneksi & drift kamera │
 │   └─ Event bus ── tabel investigation_events ──► SSE                   │
 │        │                 │                    │                        │
 │   Cloud SQL Postgres   Cloud Storage       Vertex AI Gemini            │
@@ -195,6 +203,8 @@ Prioritas memakai MoSCoW.
 | FR-15 | Ekspor draf klaim ke PDF atau salin teks untuk dikirim manual | Could |
 | FR-16 | Notifikasi in-app saat draf baru siap ditinjau | Could |
 | FR-20 | Pemilik dapat menghentikan investigasi yang berjalan lewat tombol "Hentikan Agen"; status menjadi `cancelled` dan tercatat di audit log | Must |
+| FR-23 | **Tenggat pengajuan klaim per resi** dihitung dari kebijakan kurir dan ditampilkan pada resi serta klaim, agar admin tahu sisa waktu sebelum klaim kedaluwarsa | Should |
+| FR-24 | **Laporan uang pulih**: rekap klaim `submitted`/`rejected`/`pending_approval` per bulan dan per kurir, beserta nilai yang dipulihkan dan estimasi waktu admin yang dihemat | Could |
 
 ### 4.4 Modul Pendukung
 
@@ -202,26 +212,40 @@ Prioritas memakai MoSCoW.
 | --- | --- | --- |
 | FR-17 | Mode demo: tombol skenario (paket hilang, paket rusak, retur curang) yang memicu alur penuh, plus reset data | Must |
 | FR-18 | Halaman ringkasan metrik: jumlah anomali, klaim diajukan, estimasi nilai klaim, rata-rata waktu proses | Should |
-| FR-19 | Autentikasi sederhana untuk admin: password tunggal mode demo (disimpan di Secret Manager) | Should |
+| FR-19 | Autentikasi sederhana untuk admin: password tunggal mode demo (disimpan di Secret Manager); sesi dicek di server lewat cookie httpOnly | Should |
 | FR-21 | Setiap hasil ditandai sumbernya: `live` atau `cache` untuk analisis AI, dan "data simulasi" untuk data mock serta pengiriman klaim; hasil cache tidak pernah ditampilkan sebagai eksekusi langsung | Must |
+| FR-25 | **Impor resi dari CSV**: unggah berkas (maks 2 MB / 5.000 baris), validasi kolom, resi dengan nomor yang sama diperbarui, baris rusak dilaporkan tanpa menggagalkan seluruh unggahan; tersedia templat CSV | Should |
+| FR-26 | **Koneksi & sumber data**: status koneksi marketplace (Shopee, TikTok Shop) dan **deteksi drift jam kamera** (`scanned_at` − `recorded_start`; status `perlu_kalibrasi` bila selisih > 3 detik) | Should |
+| FR-27 | **Ambang tertahan per kurir**: `hold_days` per kurir menggantikan `sla_grace_hours` global; dapat diubah dari Pengaturan dan dibaca Monitoring | Should |
+
+Catatan prioritas: FR-23 s.d. FR-27 sudah **diimplementasikan** di kode. Prioritas di atas menyatakan bobotnya bagi demo, bukan status pengerjaan. FR-15 dan FR-16 belum dikerjakan.
 
 ## 5. Rute Halaman Frontend (Next.js App Router)
 
 | Rute | Halaman | Fungsi utama | Komponen kunci |
 | --- | --- | --- | --- |
-| `/login` | Login | Masuk admin | `LoginForm` |
+| `/login` | Login | Masuk admin: email akun demo, kata sandi tim, "Ingat perangkat", tautan lupa kata sandi, dan tombol **Coba sebagai juri** | `LoginForm` |
 | `/` | Redirect | Arahkan ke `/dashboard` | n/a |
 | `/dashboard` | Ringkasan | KPI, grafik tren, aktivitas terbaru (dari audit log), tombol "Scan Sekarang" | `StatCard`, `TrendChart`, `AgentActivityFeed` |
-| `/shipments` | Daftar resi | Tabel resi dengan filter status/kurir, pencarian, badge anomali | `ShipmentTable`, `StatusBadge`, `FilterBar` |
-| `/shipments/[id]` | Detail resi | Timeline pengiriman, alasan flag, tombol "Investigasi dengan AI", tautan ke investigasi dan klaim terakhir | `ShipmentTimeline`, `AnomalyCard` |
-| `/investigations/[id]` | Investigasi live | Progres agen real-time (SSE), klip CCTV, temuan Vision AI dengan penanda timestamp, ketentuan kurir, **keputusan Evaluator**, tombol Hentikan Agen | `AgentTrace`, `EvidencePlayer`, `VisionFindings`, `DecisionCard` |
-| `/claims` | Daftar klaim | Antrean persetujuan (pending dulu), riwayat, filter status | `ClaimTable` |
-| `/claims/[id]` | Review klaim (HITL) | Pratinjau draf, lampiran bukti, skor keyakinan, edit narasi, tombol **Setujui & Kirim**, **Tolak** | `ClaimDraftViewer`, `ApprovalBar`, `ConfidenceMeter` |
-| `/couriers` | Kebijakan kurir | Ketentuan klaim hasil ekstraksi per kurir (read-only) | `PolicyCard` |
-| `/demo` | Panel demo | Pemicu skenario dan reset data | `ScenarioLauncher` |
-| `/settings` | Pengaturan | Interval scan, ambang SLA, ambang confidence minimum, mode AI | `SettingsForm` |
+| `/shipments` | Daftar resi | Tabel resi dengan filter status/kurir, pencarian, badge anomali; tombol investigasi | `ShipmentTable`, `StatusBadge`, `FilterBar`, `ScanButton` |
+| `/shipments/[id]` | Detail resi | Timeline pengiriman, alasan flag, tombol "Investigasi dengan AI", tautan ke investigasi dan klaim terakhir | `ShipmentTimeline`, `AnomalyCard`, `ClaimPanel` |
+| `/investigations/[id]` | Investigasi live | Progres agen real-time (SSE), klip CCTV, temuan Vision AI dengan penanda timestamp, ketentuan kurir, **keputusan Evaluator**, tombol Hentikan Agen | `AgentSteps`, `EvidencePanel`, `useInvestigationStream` |
+| `/claims` | Daftar klaim | Antrean persetujuan (pending dulu), riwayat, filter status | Tabel klaim + `claim-actions` |
+| `/claims/[id]` | Review klaim (HITL) | Pratinjau draf, lampiran bukti, skor keyakinan, edit narasi, tombol **Setujui & Kirim**, **Tolak** | `ClaimActions`, `ConfirmDialog` |
+| `/reports` | Laporan uang pulih | Rekap klaim per bulan dan per kurir, nilai dipulihkan, estimasi waktu admin (FR-24) | Halaman laporan |
+| `/couriers` | Kebijakan kurir | Ketentuan klaim hasil ekstraksi per kurir (read-only) | `CourierPolicy` + `courier-table` |
+| `/demo` | Panel demo | Pemicu skenario (`lost`, `damaged`, `return_fraud`) dan reset data | Halaman demo |
+| `/settings` | Pengaturan: pemantauan & ambang | Interval scan, ambang SLA, ambang confidence, mode AI, ambang tertahan per kurir | `SettingsForm`, `controls`, `courier-table` |
+| `/settings/connections` | Koneksi & sumber data | Status marketplace, impor CSV resi, drift jam kamera | `connections-form` |
+| `/settings/privacy` | Privasi & data | Retensi video, masking PII, hapus/purge data investigasi | `privacy-form` |
+| `/settings/audit-log` | Log audit | Jejak aksi agen dan operator | `AuditLogView`, `audit-drawer` |
+| `/settings/account` | Akun | Profil operator demo, masa berlaku sesi perangkat ini, status layanan dari `/health`, dan tombol keluar (FR-19) | `AccountForm` |
 
-Catatan UX: skeleton loading, toast untuk hasil aksi, konfirmasi sebelum "Setujui & Kirim", bahasa Indonesia sederhana (NFR-03).
+Catatan UX: skeleton loading, toast untuk hasil aksi, konfirmasi sebelum "Setujui & Kirim", bahasa Indonesia sederhana (NFR-03). Navigasi sidebar (`lib/nav.ts`) mengelompokkan halaman menjadi **Kerja harian**, **Analisis**, dan **Sistem**.
+
+**Halaman Akun sengaja tidak memuat field palsu.** Sistem demo memakai satu kata sandi tim tanpa pemisahan peran, sehingga halaman ini tidak menyediakan "ubah kata sandi", "ubah nama", atau "kelola anggota". Yang ditampilkan adalah data yang benar-benar ada: status sesi dari token tersimpan (`sessionStorage` vs `localStorage`), waktu berakhirnya, kondisi backend dari `GET /health`, dan aksi keluar. Diganti kata sandi dilakukan lewat secret `DEMO_PASSWORD`, dan hal itu dinyatakan di halaman.
+
+**Mode mock frontend:** bila `NEXT_PUBLIC_API_MOCK=1`, `lib/api-client.ts` dan `lib/sse.ts` memakai data mock lokal (`lib/mock/`) sehingga UI dapat didemokan tanpa backend. Topbar menampilkan label "Mode mock". Default (variabel tidak diisi) adalah **backend nyata**.
 
 ## 6. Spesifikasi API Backend (FastAPI)
 
@@ -229,32 +253,48 @@ Prefix `/api/v1`. Semua respons JSON kecuali SSE. Skema divalidasi Pydantic. Sel
 
 | Method | Endpoint | Fungsi |
 | --- | --- | --- |
-| GET | `/health` | Cek kesehatan layanan (termasuk koneksi DB) |
-| POST | `/auth/login` | Login password tunggal mode demo, mengembalikan token sesi |
-| GET | `/shipments` | Daftar resi (filter `status`, `courier`, `q`, paginasi) |
-| GET | `/shipments/{id}` | Detail resi, event tracking, anomali aktif, investigasi dan klaim terakhir |
+| GET | `/health` | Cek kesehatan layanan (termasuk koneksi DB, `ai_mode`, `storage`) |
+| POST | `/auth/login` | Login password tunggal mode demo, mengembalikan token sesi dan menyetel cookie `cg_session` httpOnly |
+| GET | `/auth/session` | Status sesi dari cookie (`{authenticated, user, auth_required}`); **token tidak pernah dikembalikan**. Dipakai penjaga rute di server Next.js |
+| POST | `/auth/logout` | Menghapus cookie sesi (204). Idempoten, aman dipanggil tanpa sesi |
+| GET | `/shipments` | Daftar resi (filter `status`, `courier`, `q`, paginasi `limit`/`offset`) |
+| GET | `/shipments/{shipment_id}` | Detail resi, event tracking, anomali aktif, `claim_deadline`, investigasi dan klaim terakhir |
+| POST | `/shipments/import` | Impor resi dari CSV (`multipart/form-data`, maks 2 MB) — FR-25 |
+| GET | `/shipments/import/template` | Unduh templat CSV agar format selalu selaras dengan parser — FR-25 |
 | POST | `/monitoring/scan` | Menjalankan Monitoring, mengembalikan daftar anomali baru |
 | GET | `/anomalies` | Daftar anomali (filter `status`, `case_type`) |
 | POST | `/investigations` | Memulai investigasi untuk `shipment_id`; langsung mengembalikan `investigation_id` (202) |
 | GET | `/investigations` | Daftar investigasi (filter `shipment_id`, `status`) |
-| GET | `/investigations/{id}` | Status, outcome, keputusan, evidence, dan trace |
-| GET | `/investigations/{id}/stream` | SSE: `status`, `tool_start`, `tool_end`, `thought`, `decision`, `done`, `error`, `cancelled`; mendukung `Last-Event-ID` |
-| POST | `/investigations/{id}/cancel` | Menghentikan investigasi yang berjalan (409 bila sudah selesai) |
+| GET | `/investigations/{investigation_id}` | Status, outcome, keputusan, evidence, dan trace |
+| GET | `/investigations/{investigation_id}/stream` | SSE: `status`, `tool_start`, `tool_end`, `thought`, `decision`, `done`, `error`, `cancelled`; mendukung `Last-Event-ID` |
+| POST | `/investigations/{investigation_id}/cancel` | Menghentikan investigasi yang berjalan (409 bila sudah selesai) |
+| DELETE | `/investigations/{investigation_id}` | Hapus satu investigasi beserta evidence dan event-nya (NFR-11) |
+| POST | `/investigations/purge?older_than_days=N` | Hapus investigasi lama sekaligus; investigasi aktif dilewati dan dilaporkan di `skipped_active` (NFR-11) |
 | GET | `/claims` | Daftar klaim (filter `status`, `shipment_id`) |
-| GET | `/claims/{id}` | Detail draf klaim beserta lampiran |
-| PATCH | `/claims/{id}` | Edit narasi draf (hanya saat `pending_approval`) |
-| POST | `/claims/{id}/approve` | Persetujuan HITL: status menjadi `submitted` (simulasi); 409 bila bukan `pending_approval` |
-| POST | `/claims/{id}/reject` | Menolak dengan alasan; 409 bila bukan `pending_approval` |
-| GET | `/evidence/{id}/media` | Mengembalikan signed URL GCS (berlaku 1 jam) untuk klip/video; Range ditangani GCS |
-| GET | `/couriers/policies` | Ketentuan klaim hasil ekstraksi |
+| GET | `/claims/{claim_id}` | Detail draf klaim beserta lampiran |
+| PATCH | `/claims/{claim_id}` | Edit narasi draf (hanya saat `pending_approval`) |
+| POST | `/claims/{claim_id}/approve` | Persetujuan HITL: status menjadi `submitted` (simulasi); 409 bila bukan `pending_approval` |
+| POST | `/claims/{claim_id}/reject` | Menolak dengan alasan; 409 bila bukan `pending_approval` |
+| GET | `/evidence/{evidence_id}/media` | Mengembalikan signed URL GCS (berlaku 1 jam) untuk klip/video; Range ditangani GCS |
+| GET | `/couriers/policies` | Ketentuan klaim hasil ekstraksi, termasuk `claim_window_days` (FR-05, FR-23) |
 | GET | `/metrics/summary` | Data KPI dashboard, termasuk deret tren 7 hari |
 | GET | `/audit-logs` | Aktivitas terbaru (filter `limit`, `entity`) untuk `AgentActivityFeed` |
-| GET | `/settings` | Pengaturan aktif |
-| PATCH | `/settings` | Ubah interval scan, ambang SLA, ambang confidence, mode AI (`live`/`auto`/`cache`) |
+| GET | `/settings` | Pengaturan aktif (`RuntimeSettings`, termasuk `courier_thresholds`) |
+| PATCH | `/settings` | Ubah interval scan, ambang SLA, ambang confidence, mode AI (`live`/`auto`/`cache`), retensi, dan penanda koneksi — FR-27 |
+| GET | `/settings/courier-thresholds` | Daftar ambang tertahan per kurir — FR-27 |
+| PUT | `/settings/courier-thresholds` | Mengganti **seluruh** daftar ambang kurir sekaligus — FR-27 |
+| GET | `/connections` | Status koneksi marketplace dan drift jam kamera packing — FR-26 |
+| PATCH | `/connections/{connection_id}` | Menyalakan/mematikan penanda koneksi (`shopee`, `tiktok_shop`) — FR-26 |
 | POST | `/demo/scenario/{name}` | Memicu skenario demo (`lost`, `damaged`, `return_fraud`): menyiapkan data lalu memulai investigasi; mengembalikan `investigation_id` |
-| POST | `/demo/reset` | Mengembalikan mock data ke kondisi awal |
+| POST | `/demo/reset` | Mengembalikan mock data ke kondisi awal; mengembalikan `missing_media` bila video sampel tidak ada |
+
+**Total: 34 operasi** pada 29 path (lihat `backend/openapi.json`).
 
 **Konvensi error:** format seragam `{ "error": { "code": "...", "message": "..." } }` dengan kode HTTP yang tepat: 400, 401, 404, 409 (status tidak valid), 422, 502 (layanan AI gagal tanpa cache).
+
+**Autentikasi per endpoint.** Bila `AUTH_REQUIRED=true`: seluruh endpoint **baca (GET)** tetap publik agar dashboard dapat dibuka penilai, sedangkan **endpoint tulis dan pemicu AI** (`POST`, `PATCH`, `PUT`, `DELETE`, kecuali `/auth/login`, `/auth/session`, `/auth/logout`, dan `/health`) memerlukan token `Authorization: Bearer` atau cookie sesi dan mengembalikan 401 tanpa keduanya. Ini keputusan sadar untuk demo: menutup penyalahgunaan kuota Vertex tanpa memaksa login berlapis. **Rate limiting belum ada** — tercatat sebagai celah di bagian 19.
+
+**Sesi di sisi klien.** Cookie `cg_session` adalah sumber kebenaran. Frontend memakai token di storage browser **hanya sebagai cadangan**, karena di Cloud Run frontend dan backend berada di domain berbeda dan cookie lintas situs dapat diblokir; SSE (`EventSource`) tidak dapat mengirim header, sehingga alur SSE tetap bergantung pada cookie dengan `withCredentials`. Penjaga rute `app/(dashboard)/layout.tsx` memanggil `GET /auth/session` **di server** sehingga HTML tidak pernah terkirim ke pengguna tanpa sesi.
 
 **Format event SSE:** `id: <seq>`, `event: <type>`, `data: {"investigation_id", "agent", "ts", "payload", "source"}`.
 
@@ -280,143 +320,168 @@ Aturan tools: input divalidasi; tool **tidak pernah menerima path file** dari LL
 | `claim_service.create_from_draft()` | Menyimpan draf hasil Drafter sebagai klaim `pending_approval` | `investigation_runner` |
 | `claim_service.submit_claim()` | Simulasi pengiriman klaim | **Hanya** `POST /claims/{id}/approve` |
 | `investigation_runner.start()/cancel()` | Menjalankan ADK Runner sebagai task, memetakan event ke SSE | `POST /investigations`, `/cancel`, `/demo/scenario` |
+| `deadlines.claim_deadline()` | Menghitung tenggat klaim dari kebijakan kurir (FR-23) | Router shipments & claims saat menyusun respons |
+| `csv_import.import_rows()` | Validasi dan impor CSV resi, idempoten per `tracking_number` (FR-25) | `POST /shipments/import` |
+| `connections.list_cameras()/marketplaces()` | Drift jam kamera dan status koneksi (FR-26) | `GET /connections` |
+| `settings_service.RuntimeSettings` | Baca/tulis pengaturan runtime, termasuk ambang per kurir (FR-27) | `GET/PATCH /settings`, Monitoring, agen |
+| `demo_data.reset_and_seed()` | Seed deterministik dan penyalinan/penghasilan video sampel | `POST /demo/reset`, `seed.py` |
 
 ## 8. Model Data
 
 | Tabel | Kolom utama |
 | --- | --- |
-| `shipments` | id, tracking_number, courier, status, origin, destination, shipped_at, sla_deadline, item_value, buyer_report, is_simulated |
+| `shipments` | id, tracking_number, courier, status, origin, destination, shipped_at, sla_deadline, item_name, item_value, buyer_report, is_simulated |
 | `tracking_events` | id, shipment_id, status, location, occurred_at |
-| `pack_scan_logs` | id, shipment_id, scanned_at, cctv_video_id |
-| `media_assets` | id, kind (`cctv`/`unboxing`/`photo`), gcs_uri, recorded_start, duration_sec, shipment_id (nullable) |
-| `anomalies` | id, shipment_id, code, case_type (`lost`/`damaged`/`return_fraud`), severity, reason_json, detected_at, status (`open`/`investigating`/`resolved`) |
-| `investigations` | id, shipment_id, anomaly_id, status (`queued`/`running`/`completed`/`failed`/`cancelled`), outcome (`claim_drafted`/`needs_evidence`/`fraud_suspect`), decision_reason, confidence, verdict, started_at, finished_at, duration_ms |
-| `investigation_events` | seq, investigation_id, type, agent, payload_json, source, created_at |
-| `evidence` | id, investigation_id, kind (`cctv_clip`/`unboxing`/`photo`), gcs_uri, analysis_json, analysis_source (`live`/`cache`) |
-| `courier_policies` | id, courier, claim_window_days, required_docs_json, max_compensation, source_text, extracted_at |
-| `claims` | id, shipment_id, investigation_id, narrative, status, created_at, updated_at, submitted_at, submitted_by, submission_ref, reject_reason, is_simulated |
+| `pack_scan_logs` | id, shipment_id, scanned_at, cctv_media_id |
+| `media_assets` | id, kind (`cctv`/`unboxing`/`photo`), uri (`gs://…` atau `local://…`), recorded_start, duration_sec, shipment_id (nullable), description |
+| `anomalies` | id, shipment_id, code, case_type (`lost`/`damaged`/`return_fraud`), severity (`low`/`medium`/`high`), reason_json, detected_at, status (`open`/`investigating`/`resolved`) |
+| `investigations` | id, shipment_id, anomaly_id, case_type, status (`queued`/`running`/`completed`/`failed`/`cancelled`), outcome (`claim_drafted`/`needs_evidence`/`fraud_suspect`), verdict, confidence, decision_reason, error, started_at, finished_at, duration_ms |
+| `investigation_events` | seq, investigation_id, type, agent, payload_json, source (`live`/`cache`), created_at |
+| `evidence` | id, investigation_id, kind (`cctv_clip`/`unboxing`/`photo`), uri, source_media_id, clip_start_sec, clip_duration_sec, analysis_json, analysis_source (`live`/`cache`), created_at |
+| `courier_policies` | id, courier, claim_window_days, required_docs_json, max_compensation, extra_json, source_text, extraction_source (`live`/`cache`/`manual`), extracted_at |
+| `claims` | id, shipment_id, investigation_id, narrative, draft_json, status (`pending_approval`/`submitted`/`rejected`), created_at, updated_at, submitted_at, submitted_by, submission_ref, reject_reason, is_simulated |
 | `audit_logs` | id, actor (`agent:<nama>`/`user`/`system`), action, entity, entity_id, payload_json, created_at |
-| `settings` | key, value_json, updated_at |
+| `courier_thresholds` | courier (PK), display_name, hold_days, sla_note, tag, updated_at — ambang tertahan per kurir (FR-27) |
+| `settings` | key, value_json, updated_at — nilai `RuntimeSettings` yang dapat diubah saat berjalan |
 
 Ketentuan:
 
-- Primary key UUID (kecuali `investigation_events.seq` berupa bigint berurutan). Waktu disimpan dalam UTC.
-- Indeks pada `shipments.status`, `claims.status`, `anomalies.shipment_id`, `investigation_events.investigation_id`.
+- Primary key UUID (kecuali `investigation_events.seq` berupa bigint berurutan dan `courier_thresholds.courier` berupa string). Waktu selalu disimpan sebagai UTC timezone-aware (`UTCDateTime` memaksa konversi dan mengembalikan tzinfo meski SQLite membuangnya).
+- Indeks pada `shipments.courier`, `shipments.status`, `claims.status`, `anomalies.shipment_id`, `investigations.status`, `media_assets.shipment_id`, `pack_scan_logs.shipment_id`, `evidence.investigation_id`, `investigation_events.investigation_id`, `audit_logs.created_at`, `audit_logs.entity_id`.
+- Kolom JSON memakai `JSON` di SQLite dan `JSONB` di Postgres (`Json = JSON().with_variant(JSONB(), "postgresql")`).
 - **Produksi (demo): Cloud SQL Postgres. Lokal: SQLite.** Skema dibuat dengan SQLAlchemy 2 `create_all` saat startup dan `seed.py`; Alembic tidak dipakai di hackathon.
-- Klip dan video disimpan di GCS dengan pola `gs://<bucket>/samples/...` (video sampel) dan `gs://<bucket>/clips/<investigation_id>/...` (klip). Secara lokal, `STORAGE_BACKEND=local` memakai folder `storage/`.
+- Klip dan video disimpan di GCS dengan pola `gs://<bucket>/samples/...` (video sampel) dan `gs://<bucket>/clips/<investigation_id>/...` (klip). Secara lokal, `STORAGE_BACKEND=local` memakai folder `storage/` dan URI `local://…`, disajikan lewat mount `/media`.
+- **Tenggat klaim tidak disimpan sebagai kolom**, melainkan dihitung (`services/deadlines.py`): acuan = event pelacakan terakhir bila status `delivered`/`returned`, selain itu `sla_deadline`; ditambah `courier_policies.claim_window_days`. Dihitung saat respons API (`claim_deadline` pada resi dan klaim).
 
 ## 9. Struktur Direktori
 
 ```
 ClaimGuard/
-├── README.md                     # cara jalan lokal + deploy
+├── README.md                     # cara jalan lokal + deploy + skenario demo
 ├── .gitignore                    # .env, storage/, *.db, node_modules, .next
-├── .env.example
+├── .github/
+│   └── workflows/deploy.yml      # CI: build & deploy Cloud Run
+├── assets/                       # ekspor Figma (referensi desain)
 ├── docs/
-│   ├── SRS.md
-│   └── architecture.md
+│   ├── SRS.md                    # dokumen ini
+│   ├── backend-a-handoff.md      # kontrak agen untuk Backend B
+│   ├── backend-status-2026-10-21.md  # verifikasi backend vs SRS
+│   └── data-dummy-dan-video.md   # rencana & spesifikasi data demo
 ├── infra/
 │   ├── deploy-api.sh             # gcloud run deploy --source (backend)
 │   ├── deploy-web.sh             # gcloud run deploy --source (frontend)
-│   └── setup-gcp.md              # langkah setup project, IAM, SQL, bucket
+│   ├── setup-gcp.md              # langkah setup project, IAM, SQL, bucket
+│   └── setup-gcp.sh              # pembuatan resource GCP
 ├── backend/
-│   ├── pyproject.toml            # versi dependensi di-pin, termasuk google-adk
+│   ├── pyproject.toml            # dependensi di-pin, termasuk google-adk==2.11.0
+│   ├── requirements.lock
 │   ├── Dockerfile                # python:3.12-slim + ffmpeg
 │   ├── .env.example
+│   ├── env.cloud.yaml.example
+│   ├── openapi.json              # ekspor kontrak API (scripts/export_openapi.py)
 │   ├── app/
-│   │   ├── main.py               # FastAPI entrypoint, CORS, lifespan, registrasi router
+│   │   ├── main.py               # FastAPI entrypoint, CORS, lifespan, mount /media, /health
 │   │   ├── core/
-│   │   │   ├── config.py         # pydantic-settings
+│   │   │   ├── config.py         # pydantic-settings, gagal cepat
+│   │   │   ├── errors.py         # handler error seragam {error:{code,message}}
 │   │   │   ├── logging.py        # log JSON ke stdout (Cloud Logging)
-│   │   │   └── security.py       # token sesi demo
+│   │   │   └── security.py       # token sesi demo (HMAC)
 │   │   ├── api/
-│   │   │   ├── deps.py
+│   │   │   ├── deps.py           # dependency auth, session DB
 │   │   │   └── v1/
-│   │   │       ├── auth.py
-│   │   │       ├── shipments.py
+│   │   │       ├── shipments.py      # termasuk impor CSV
 │   │   │       ├── monitoring.py
-│   │   │       ├── investigations.py   # termasuk SSE dan cancel
+│   │   │       ├── investigations.py # SSE, cancel, delete, purge
 │   │   │       ├── claims.py
 │   │   │       ├── evidence.py
-│   │   │       ├── couriers.py
 │   │   │       ├── metrics.py
+│   │   │       ├── demo.py
 │   │   │       ├── settings.py
-│   │   │       └── demo.py
+│   │   │       └── ops.py            # koneksi, drift kamera, ambang kurir, login
 │   │   ├── agents/
 │   │   │   ├── agent.py          # build_root_agent(): SequentialAgent
-│   │   │   ├── investigator.py
-│   │   │   ├── evaluator.py
-│   │   │   ├── drafter.py
-│   │   │   ├── callbacks.py      # before/after tool & model callbacks, skip Drafter, fallback cache
-│   │   │   ├── prompts/          # instruksi agen (.md), diversikan
+│   │   │   ├── callbacks.py      # before/after tool & model, skip Drafter, fallback cache
+│   │   │   ├── outcome.py        # persist_outcome(state) -> InvestigationOutcome
+│   │   │   ├── prompts/          # instruksi agen (.md, diversikan)
 │   │   │   └── tools/
 │   │   │       ├── case_tools.py     # get_case_context, get_courier_policy
 │   │   │       ├── video_tools.py    # clip_cctv_video
-│   │   │       └── vision_tools.py   # analyze_media
+│   │   │       ├── vision_tools.py   # analyze_media
+│   │   │       └── _common.py        # validasi ID & guard path
 │   │   ├── services/
-│   │   │   ├── ai_cache.py           # cache respons Gemini & tool vision
-│   │   │   ├── gemini_client.py      # klien google-genai (Vertex), retry, timeout
-│   │   │   ├── video_service.py      # FFmpeg
-│   │   │   ├── storage_service.py    # GCS / lokal, signed URL
+│   │   │   ├── ai_cache.py                 # cache respons Gemini & tool vision
+│   │   │   ├── gemini_client.py            # google-genai (Vertex), retry, timeout
+│   │   │   ├── video_service.py            # FFmpeg (dapat dibatalkan)
+│   │   │   ├── storage_service.py          # GCS / lokal, signed URL
 │   │   │   ├── policy_extractor.py
 │   │   │   ├── monitoring.py
 │   │   │   ├── claim_service.py
-│   │   │   ├── investigation_runner.py  # task registry, event bus, SSE
+│   │   │   ├── investigation_runner.py     # task registry, event bus, SSE
 │   │   │   ├── audit.py
-│   │   │   └── scheduler.py
+│   │   │   ├── scheduler.py
+│   │   │   ├── settings_service.py         # RuntimeSettings (DB)
+│   │   │   ├── deadlines.py                # tenggat klaim (FR-23)
+│   │   │   ├── connections.py              # marketplace & drift kamera (FR-26)
+│   │   │   ├── csv_import.py               # impor CSV (FR-25)
+│   │   │   └── demo_data.py                # seed deterministik & media sampel
 │   │   ├── models/               # SQLAlchemy models
-│   │   ├── schemas/              # Pydantic (lihat kepemilikan per berkas)
-│   │   ├── repositories/
-│   │   └── db/session.py
+│   │   ├── schemas/              # Pydantic (agent_outputs, claim, common, evidence,
+│   │   │                         #   investigation, metrics, ops, shipment)
+│   │   ├── repositories/         # shipments, investigations, policies
+│   │   └── db/session.py         # engine SQLite WAL / Postgres
 │   ├── data/
+│   │   ├── seed.py               # seed + --synthetic (video uji bila samples kosong)
 │   │   ├── mock/shipments.json
-│   │   ├── mock/courier_policies/  # jne.md, jnt.md, sicepat.md
-│   │   ├── cache/                  # respons AI pre-computed untuk fallback
-│   │   └── seed.py
-│   ├── storage/                    # lokal saja, di-gitignore
+│   │   ├── mock/courier_policies/  # jne.md, jnt.md, sicepat.md, fallback.json
+│   │   ├── samples/              # video CCTV/unboxing (diisi tim; lihat 15.5)
+│   │   └── cache/                # rekaman respons AI untuk fallback (di-commit)
+│   ├── scripts/export_openapi.py
+│   ├── storage/                  # lokal saja, di-gitignore
 │   └── tests/
-│       ├── unit/
-│       ├── integration/
-│       └── fixtures/
+│       ├── conftest.py
+│       ├── unit/                 # monitoring, video, tool, policy extractor
+│       ├── integration/          # pipeline ADK dengan LLM di-mock
+│       └── api/                  # API end-to-end, SSE, cancel, HITL
 └── frontend/
     ├── package.json
-    ├── Dockerfile                  # Next.js output: standalone
+    ├── Dockerfile                # Next.js output: standalone
     ├── next.config.ts
-    ├── components.json             # Shadcn UI
-    ├── .env.local.example
+    ├── components.json           # Shadcn UI
     └── src/
         ├── app/
         │   ├── (auth)/login/page.tsx
         │   ├── (dashboard)/
         │   │   ├── layout.tsx
         │   │   ├── dashboard/page.tsx
-        │   │   ├── shipments/page.tsx
-        │   │   ├── shipments/[id]/page.tsx
+        │   │   ├── shipments/{page.tsx, [id]/page.tsx}
         │   │   ├── investigations/[id]/page.tsx
-        │   │   ├── claims/page.tsx
-        │   │   ├── claims/[id]/page.tsx
+        │   │   ├── claims/{page.tsx, [id]/page.tsx}
+        │   │   ├── reports/page.tsx
         │   │   ├── couriers/page.tsx
         │   │   ├── demo/page.tsx
-        │   │   └── settings/page.tsx
+        │   │   └── settings/{page.tsx, connections/, privacy/, audit-log/, account/}
         │   ├── layout.tsx
-        │   ├── error.tsx
+        │   ├── providers.tsx
+        │   ├── page.tsx
         │   └── not-found.tsx
         ├── components/
         │   ├── ui/                 # Shadcn + token desain
-        │   ├── layout/
-        │   ├── shipments/
-        │   ├── dashboard/
-        │   ├── investigation/      # AgentTrace, EvidencePlayer, VisionFindings, DecisionCard
-        │   └── claims/             # ClaimTable, ClaimDraftViewer, ApprovalBar, ConfidenceMeter
+        │   ├── auth/               # auth-guard, login-form
+        │   ├── layout/             # sidebar, topbar, nav.ts
+        │   ├── shipments/          # tabel, timeline, anomaly, claim-panel, scan-button
+        │   ├── investigation/      # agent-steps, evidence-panel, derive.ts
+        │   ├── claims/             # claim-actions
+        │   └── settings/           # form, controls, connections-form, privacy-form, account-form, audit-log
         ├── lib/
-        │   ├── api-client.ts
-        │   ├── sse.ts
-        │   └── utils.ts
-        ├── mocks/                  # MSW handlers
-        ├── hooks/
-        ├── types/                  # dibuat dari openapi.json
-        └── styles/
+        │   ├── api-client.ts       # klien API (mode mock opsional)
+        │   ├── api.ts              # settings/ops endpoints
+        │   ├── sse.ts              # useInvestigationStream (Last-Event-ID)
+        │   ├── auth.ts, format.ts, audit.ts, settings-tabs.ts, utils.ts
+        │   └── mock/               # data & handler mock (NEXT_PUBLIC_API_MOCK=1)
+        └── types/api.ts
 ```
+
+> **Catatan drift:** `next.config.ts`/`app/error.tsx` versi awal SRS tidak ada di repositori saat ini; penanganan error halaman memakai `components/ui/states.tsx` (`ErrorState`) dan `not-found.tsx`. `frontend/hooks/` juga belum dibuat. Bila akan ditambahkan, perbarui bagian ini.
 
 **Kepemilikan berkas** (satu berkas, satu pemilik; pihak lain mengubah lewat PR kecil):
 
@@ -427,17 +492,17 @@ ClaimGuard/
 | `backend/app/agents/` (semua) | Backend A |
 | `backend/app/services/{ai_cache, gemini_client, video_service, storage_service, policy_extractor}.py` | Backend A |
 | `backend/data/cache/` | Backend A |
-| `backend/app/main.py`, `core/` (config, logging, security) | Backend B |
+| `backend/app/main.py`, `core/` (config, errors, logging, security) | Backend B |
 | `backend/app/api/` (semua router) | Backend B |
-| `backend/app/schemas/{common, shipment, claim, metrics, settings}.py` | Backend B |
-| `backend/app/services/{monitoring, claim_service, investigation_runner, audit, scheduler}.py` | Backend B |
-| `backend/data/mock/`, `seed.py`, `openapi.json` | Backend B |
-| `backend/Dockerfile`, `infra/`, `.gitignore`, `.env.example`, README | Backend B |
-| `frontend/src/components/{ui, layout, shipments, dashboard}/`, `styles/`, root `layout.tsx`, `(dashboard)/layout.tsx` | Frontend A |
-| `frontend/src/app/(dashboard)/{dashboard, shipments, couriers, settings, claims/page.tsx}` | Frontend A |
-| `frontend/src/lib/api-client.ts`, `types/`, `frontend/Dockerfile`, `next.config.ts` | Frontend A |
+| `backend/app/schemas/{common, claim, metrics, ops, shipment}.py` | Backend B |
+| `backend/app/services/{monitoring, claim_service, investigation_runner, audit, scheduler, settings_service, deadlines, connections, csv_import, demo_data}.py` | Backend B |
+| `backend/data/mock/`, `seed.py`, `openapi.json`, `scripts/` | Backend B |
+| `backend/Dockerfile`, `infra/`, `.github/`, `.gitignore`, `.env.example`, README | Backend B |
+| `frontend/src/components/{ui, layout, shipments, dashboard}/`, root `layout.tsx`, `(dashboard)/layout.tsx` | Frontend A |
+| `frontend/src/app/(dashboard)/{dashboard, shipments, couriers, settings, claims/page.tsx, reports}` | Frontend A |
+| `frontend/src/lib/{api-client, api, auth, format, audit}.ts`, `types/`, `frontend/Dockerfile`, `next.config.ts` | Frontend A |
 | `frontend/src/app/(auth)/login/`, `(dashboard)/{investigations, claims/[id], demo}` | Frontend B |
-| `frontend/src/components/{investigation, claims}/` (kecuali `claims/ClaimTable.tsx` milik Frontend A), `lib/sse.ts`, `hooks/`, `mocks/`, `error.tsx`, `not-found.tsx` | Frontend B |
+| `frontend/src/components/{investigation, claims}/`, `lib/{sse.ts, mock/}`, `not-found.tsx` | Frontend B |
 | Video sampel (rekaman fisik) | Frontend B (lihat 15.5); diunggah ke GCS oleh Backend B |
 
 Antarmuka antar-backend:
@@ -451,8 +516,8 @@ Antarmuka antar-backend:
 
 | Lapisan | Pilihan | Catatan |
 | --- | --- | --- |
-| Orkestrasi agen | Python 3.12, **Google ADK** (`google-adk` 2.x, versi di-pin dan dirilis minimal 2 minggu sebelum hackathon) | Wajib dari panitia. Semua developer dan Dockerfile memakai versi yang sama; banyak tutorial daring masih memakai API 1.x |
-| Model AI | Gemini model Flash terbaru di **Vertex AI** (`GOOGLE_GENAI_USE_VERTEXAI=true`) | Nama model dan region ketersediaan diverifikasi saat setup; autentikasi lewat service account, tanpa API key |
+| Orkestrasi agen | Python 3.12, **Google ADK** (`google-adk==2.11.0`, di-pin) | Wajib dari panitia. Semua developer dan Dockerfile memakai versi yang sama; banyak tutorial daring masih memakai API 1.x |
+| Model AI | Gemini `gemini-2.5-flash` di **Vertex AI** (`GOOGLE_GENAI_USE_VERTEXAI=true`, default `GCP_LOCATION=global`) | Dapat diganti lewat `GEMINI_MODEL`; autentikasi lewat service account, tanpa API key |
 | Backend | FastAPI, Pydantic v2, SQLAlchemy 2, Uvicorn | |
 | Penjadwal | APScheduler (in-process) | Berjalan aman karena satu instance dengan CPU selalu aktif |
 | Video | FFmpeg (encode ulang H.264 `-preset ultrafast`) | Bukan stream copy: potongan akurat ke detik dan dapat diputar browser |
@@ -464,8 +529,11 @@ Antarmuka antar-backend:
 | Real-time | SSE (EventSource) | |
 | Kualitas kode | Ruff, pytest · ESLint, Prettier | mypy dan CI bersifat Could |
 | Deployment | **Cloud Run** (dua service) via `gcloud run deploy --source` (Cloud Build) | Tidak memerlukan Docker lokal; Agent Engine tidak dipakai |
+| Pengujian | pytest (unit, integrasi ADK dengan LLM di-*mock*, API end-to-end) · Ruff untuk lint | Tidak membutuhkan kredit Gemini; lihat 12.6 |
 
-Konfigurasi Cloud Run backend: `--min-instances=1 --max-instances=1 --no-cpu-throttling --timeout=3600 --memory=2Gi`, service account khusus dengan role `Vertex AI User`, `Cloud SQL Client`, `Storage Object Admin` (bucket proyek), `Secret Manager Secret Accessor`.
+**Konfigurasi runtime (`app/core/config.py`, `pydantic-settings`, gagal cepat).** Variabel yang wajib/menentukan: `ENV` (`local`/`cloud`), `DATABASE_URL`, `CORS_ORIGINS`, `AUTH_REQUIRED`, `DEMO_PASSWORD`, `SESSION_SECRET`, `STORAGE_BACKEND`, `GCS_BUCKET`, `GCP_PROJECT`, `GCP_LOCATION`, `GEMINI_MODEL`, `AI_MODE`, `MIN_CONFIDENCE`, `MEDIUM_CONFIDENCE`, `SLA_GRACE_HOURS`, `SCAN_INTERVAL_MIN`, `SCHEDULER_ENABLED`, `FFMPEG_PATH`. Bila `ENV=cloud`, aplikasi **menolak start** jika `SESSION_SECRET`/`DEMO_PASSWORD` masih bernilai default.
+
+Konfigurasi Cloud Run backend: `--min-instances=1 --max-instances=1 --no-cpu-throttling --timeout=3600 --memory=2Gi`, service account khusus dengan role `Vertex AI User`, `Cloud SQL Client`, `Storage Object Admin` (bucket proyek), `Secret Manager Secret Accessor`, serta `iam.serviceAccountTokenCreator` **pada dirinya sendiri** agar signed URL GCS dapat ditandatangani (signBlob) tanpa private key.
 
 ## 11. Kebutuhan Non-Fungsional
 
@@ -502,7 +570,7 @@ Konfigurasi Cloud Run backend: `--min-instances=1 --max-instances=1 --no-cpu-thr
 
 - FFmpeg encode ulang (`-ss` sebelum `-i`, `-t`, `-c:v libx264 -preset ultrafast -an`, resolusi maksimal 720p). Potongan akurat dan langsung dapat diputar browser.
 - Kirim klip pendek (10 sampai 30 detik) ke Gemini sebagai URI `gs://`; tidak perlu Files API.
-- Cache hasil analisis berdasarkan hash (`gcs_uri` sumber + offset + versi prompt + focus).
+- Cache hasil analisis berdasarkan hash (URI sumber + offset + versi prompt + focus).
 - Klip sementara di `/tmp` (memori Cloud Run) dihapus segera setelah diunggah.
 
 ### 12.3 Backend
@@ -516,9 +584,10 @@ Konfigurasi Cloud Run backend: `--min-instances=1 --max-instances=1 --no-cpu-thr
 ### 12.4 Frontend
 
 - Server Components untuk halaman statis, Client Components untuk SSE, player, dan form.
-- Tipe API dari `openapi.json` (`openapi-typescript`).
-- Tangani semua state: loading, kosong, error, sukses.
-- Tampilkan **alasan** di balik keputusan AI (keputusan, temuan, timestamp, confidence, sumber live/cache).
+- Tipe API didefinisikan manual di `frontend/src/types/api.ts` dan dijaga selaras dengan `backend/openapi.json`; `openapi-typescript` belum dipakai (Could).
+- Klien API tunggal (`lib/api-client.ts`) dengan auth Bearer, penanganan 401 (redirect login) dan 409 (muat ulang); mode mock opsional lewat `NEXT_PUBLIC_API_MOCK=1`.
+- Tangani semua state: loading (skeleton), kosong, error, sukses.
+- Tampilkan **alasan** di balik keputusan AI (keputusan, temuan, timestamp, confidence, sumber live/cache) beserta label data simulasi.
 - Tombol persetujuan menampilkan ringkasan dan konfirmasi; nonaktif saat request berjalan.
 
 ### 12.5 Keamanan dan Secrets
@@ -533,8 +602,11 @@ Konfigurasi Cloud Run backend: `--min-instances=1 --max-instances=1 --no-cpu-thr
 
 - Unit test aturan SLA, tool video (fixture video pendek), penjaga confidence, dan transisi status klaim (termasuk 409).
 - Integration test run ADK dengan model di-mock (callback cache) untuk ketiga skenario.
-- Smoke test end-to-end skenario A pada URL Cloud Run.
+- API end-to-end: kontrak endpoint, SSE + replay `Last-Event-ID`, cancel, HITL approve/reject, impor CSV, dan auth.
+- Per 22 Oktober 2026: **49 test lulus** tanpa kredit Gemini (`pytest -q`, ±10 detik), `ruff check` bersih.
+- Smoke test end-to-end skenario A pada URL Cloud Run (**belum dijalankan** — lihat §19).
 - Dry run demo minimal 3 kali sebelum presentasi.
+- **Golden-set** keputusan Evaluator: 5–10 kasus dengan keputusan harapan, dijalankan setiap prompt berubah (**belum ada**, §19).
 
 ### 12.7 DevOps dan Kolaborasi
 
@@ -542,6 +614,7 @@ Konfigurasi Cloud Run backend: `--min-instances=1 --max-instances=1 --no-cpu-thr
 - `gcloud run deploy --source` (Cloud Build); tidak perlu Docker lokal di Windows.
 - Lokal: `uvicorn` + `npm run dev` dengan SQLite dan storage lokal; dokumentasikan di README (setup kurang dari 5 menit).
 - Git: branch per fitur, commit konvensional, PR kecil; `main` selalu dapat di-deploy.
+- **Sinkronisasi dokumen:** PR yang mengubah endpoint, tabel, rute, atau `RuntimeSettings` wajib memperbarui §4/§5/§6/§8 dan menjalankan `backend/scripts/export_openapi.py`.
 
 ## 13. Strategi Keandalan Demo (NFR-01 dan NFR-02)
 
@@ -574,6 +647,8 @@ Estimasi anggaran waktu skenario A: konteks kasus kurang dari 1 detik, potong da
 | F. Hentikan Agen | Mulai investigasi → klik Hentikan Agen | Status `cancelled` dalam waktu kurang dari 2 detik, event `cancelled` tampil, tercatat di audit log |
 
 ## 15. Rencana Pengerjaan
+
+> **Catatan status:** bagian ini adalah **rencana kerja asli** dan dipertahankan sebagai catatan proses. Sebagian besar item sudah selesai. Nama komponen frontend di sini (mis. `AgentTrace`, `ApprovalBar`, `ClaimDraftViewer`) adalah nama **rencana** yang berganti saat implementasi — daftar komponen yang benar ada di §5 dan §9. Status terkini dan celah yang tersisa ada di **§19**.
 
 Hacking dimulai Rabu 13.00. Jam 0–2 bertabrakan dengan mentoring (14.00–16.00), sehingga checkpoint Fondasi digeser ke 16.00.
 
@@ -836,6 +911,10 @@ Prioritaskan semua kebutuhan **Must**. Skenario B dan C dikerjakan hanya bila sk
 | Scope terlalu besar | Fitur tidak selesai | MoSCoW; B dan C opsional; Could dianulir dulu |
 | Kredensial GCP bocor | Penyalahgunaan kredit panitia | IAM per anggota, tanpa kunci di repo, service account khusus |
 | Prompt injection dari teks eksternal | Agen menyimpang | Teks eksternal tidak masuk instruksi, tools hanya menerima ID, agen tanpa tool kirim |
+| Endpoint pemicu AI dipanggil berulang saat demo | Kredit Vertex terkuras / antrean penuh | Login wajib untuk endpoint tulis (FR-19), guard investigasi ganda (409), tombol nonaktif saat request berjalan. **Rate limiting belum ada** |
+| `data/samples/` kosong | Investigasi berhenti di `clip_cctv_video` | Rekam 5 video sesuai `docs/data-dummy-dan-video.md` §2 sebelum pembekuan |
+| `data/cache/` kosong | Fallback mode `auto` tidak berfungsi saat Gemini gagal | Rekam ketiga skenario dalam `AI_MODE=live` lalu commit |
+| Data demo terasa "sudah diatur" | Juri menganggap hasil palsu | Label `is_simulated`/`source` di semua keluaran; siapkan skenario E (Gemini gagal) dan F (cancel) untuk menunjukkan perilaku nyata |
 
 ## 17. Matriks Keterlacakan Ringkas
 
@@ -846,12 +925,48 @@ Prioritaskan semua kebutuhan **Must**. Skenario B dan C dikerjakan hanya bila sk
 | FR-22, FR-12 | Evaluator + penjaga confidence | `/investigations/[id]` | `/investigations/{id}` |
 | FR-06 | Drafter + `claim_service.create_from_draft` | `/claims/[id]` | `/claims/{id}` |
 | FR-07, FR-13, FR-14 | `claim_service` (update atomik) | `/claims`, `/claims/[id]` | `/claims/{id}/approve`, `/reject`, `PATCH /claims/{id}` |
+| FR-08, FR-27 | `scheduler.py`, `settings_service`, `courier_thresholds` | `/settings` | `/monitoring/scan`, `/settings/courier-thresholds` |
 | FR-11 | `investigation_runner`, `investigation_events` | `/investigations/[id]` | `/investigations/{id}/stream` |
-| FR-17 | `seed.py`, `demo.py` | `/demo` | `/demo/scenario/{name}`, `/demo/reset` |
+| FR-17 | `demo_data.py` | `/demo` | `/demo/scenario/{name}`, `/demo/reset` |
+| FR-18, FR-24 | `metrics.py`, daftar klaim | `/dashboard`, `/reports` | `/metrics/summary`, `/claims` |
+| FR-19 | `core/security.py`, `api/deps.py` | `/login` | `/auth/login` |
 | FR-20 | `investigation_runner.cancel` | `/investigations/[id]` | `/investigations/{id}/cancel` |
 | FR-21 | `ai_cache`, kolom `source`/`is_simulated` | Semua halaman | Respons API dan event SSE |
+| FR-23 | `services/deadlines.py` | `/shipments/[id]`, `/claims`, `/claims/[id]` | `claim_deadline` pada `/shipments`, `/claims` |
+| FR-25 | `services/csv_import.py` | `/settings/connections` | `/shipments/import`, `/shipments/import/template` |
+| FR-26 | `services/connections.py` | `/settings/connections` | `/connections`, `/connections/{id}` |
+| NFR-11 | hapus/purge investigasi, retensi | `/settings/privacy` | `DELETE /investigations/{id}`, `/investigations/purge` |
 
 ## 18. Catatan Perubahan
+
+**Versi 2.5 (22 Oktober 2026) — alur login disempurnakan**
+
+- **Endpoint baru:** `GET /auth/session` (status sesi dari cookie, tanpa membocorkan token) dan `POST /auth/logout` (204). Total kini **34 operasi / 29 path**.
+- **Sesi diverifikasi di server:** `app/(dashboard)/layout.tsx` memanggil `/auth/session` sebelum HTML dikirim, sehingga halaman tidak lagi sempat berkedip untuk pengguna tanpa sesi. `/login` otomatis mengalihkan ke `/dashboard` bila sudah masuk.
+- **Halaman login:** field email akun demo, tautan **"Lupa kata sandi?"** (menjelaskan jalur PIC, bukan form reset palsu), dan tombol **"Coba sebagai juri"** yang digerakkan `NEXT_PUBLIC_DEMO_PASSWORD`.
+- **Logout terpusat** di `hooks/use-logout.ts`: menghapus cookie backend + token lokal, lalu menyegarkan penjaga di server.
+- **Pembatasan yang dinyatakan:** registrasi, akun per pengguna, dan reset lewat email **tidak** dibuat (lihat §19 nomor 10). Paywall/subscription juga tidak dibuat (nomor 11).
+
+**Bug produksi yang ditemukan saat deploy (22 Okt)** — semuanya sudah diperbaiki:
+
+1. **`CORS_ORIGINS` membuat container gagal start.** `cors_origins` bertipe `list[str]`, dan pydantic-settings mem-parsing env sebagai JSON; skrip mengirim URL mentah → `SettingsError`. Artinya deploy dengan CORS **selalu** gagal dan CORS tidak pernah aktif. Kini `deploy-api.sh` mengubah daftar koma menjadi JSON array.
+2. **Juri terlempar balik ke `/login` setelah berhasil masuk.** Layout memakai hasil render/RSC yang masih "belum login" karena `router.replace()` berjalan sebelum `router.refresh()`. Diperbaiki dengan urutan `refresh()` → `replace()`, `export const dynamic = "force-dynamic"`, dan Bearer cadangan di `getServerSession()`.
+3. **Verifikasi bundle `deploy-web.sh` memberi "GAGAL" palsu.** Skrip memindai `/settings`, yang kini 307 ke `/login` dan tidak memuat chunk aplikasi. Diperbaiki dengan memindai `/login`.
+
+**Versi 2.4 (22 Oktober 2026) — sinkronisasi dokumen dengan kode**
+
+Dokumen sebelumnya (v2.3) ditulis sebagai *rencana*. Setelah implementasi, beberapa bagian tertinggal dari kode. v2.4 menutup selisih itu tanpa mengubah arsitektur agen.
+
+- **§4:** ditambahkan FR-23 (tenggat klaim), FR-24 (laporan uang pulih), FR-25 (impor CSV), FR-26 (koneksi & drift kamera), FR-27 (ambang tertahan per kurir). Semuanya sudah berjalan di kode tetapi belum tercatat.
+- **§5:** tabel rute frontend diperluas: `/reports`, `/settings/connections`, `/settings/privacy`, `/settings/audit-log`, dan `/settings/account`; nama komponen disesuaikan dengan nama berkas nyata; dicatat mode mock frontend.
+- **§6:** delapan operasi yang hilang ditambahkan (`/shipments/import`, `/shipments/import/template`, `DELETE /investigations/{id}`, `/investigations/purge`, `/settings/courier-thresholds` GET & PUT, `/connections` GET & PATCH). Total kini **32 operasi / 27 path**, sesuai `openapi.json`. Kebijakan auth per endpoint dinyatakan eksplisit.
+- **§7:** layanan baru didaftarkan (`deadlines`, `csv_import`, `connections`, `settings_service`, `demo_data`).
+- **§8:** model data dikoreksi: `uri` (bukan `gcs_uri`), `media_assets.description`, `claims.draft_json`, `investigations.case_type`/`error`, `courier_policies.extra_json`/`extraction_source`, serta tabel `courier_thresholds`. Dicatat bahwa tenggat klaim adalah nilai terhitung, bukan kolom.
+- **§9:** struktur direktori ditulis ulang dari berkas nyata; `docs/architecture.md` dan `frontend/mocks/` (MSW) yang tidak ada dihapus; `router ops.py`, `agents/outcome.py`, `scripts/`, `.github/workflows/` ditambahkan. Kepemilikan berkas diselaraskan.
+- **§10:** versi ADK dan model di-pin (`google-adk==2.11.0`, `gemini-2.5-flash`); daftar variabel environment pokok dan syarat startup `ENV=cloud` dicatat; role IAM `serviceAccountTokenCreator` ditambahkan.
+- **§16:** risiko baru: rate limiting yang belum ada, video sampel dan cache AI kosong, serta risiko persepsi "data diatur".
+- **§17:** matriks keterlacakan diperluas untuk FR-23 s.d. FR-27 dan NFR-11.
+- **§19** (baru): daftar celah yang diketahui pada versi beku.
 
 **Versi 2.3 (21 Oktober 2026)**
 
@@ -873,3 +988,23 @@ Prioritaskan semua kebutuhan **Must**. Skenario B dan C dikerjakan hanya bila sk
 **Versi 2.2**: pembagian tugas empat developer, design spike, pemetaan kepemilikan berkas.
 
 **Versi 2.1**: jadwal dipetakan ke waktu asli, fase pembekuan, FR-20 dan FR-21.
+
+## 19. Celah yang Diketahui (Known Gaps)
+
+Bagian ini mencatat selisih antara **yang dijanjikan** dan **yang berjalan** pada versi beku, agar tidak ada klaim berlebihan di depan juri. Status per 22 Oktober 2026.
+
+| # | Celah | Dampak | Tindakan |
+| --- | --- | --- | --- |
+| 1 | `backend/data/samples/` kosong; video hanya dapat dihasilkan `seed.py --synthetic` | Investigasi berhenti di `clip_cctv_video` bila media tidak ada; analisis Vision atas rekaman asli belum terbukti | Rekam 5 video sesuai `docs/data-dummy-dan-video.md` §2 |
+| 2 | `backend/data/cache/` kosong | Mode `auto`/`cache` tidak punya rekaman; skenario E belum lulus end-to-end | Rekam ketiga skenario di `AI_MODE=live`, commit hasilnya |
+| 3 | Belum ada **rate limiting** pada endpoint pemicu AI (NFR-06, Should) | Klik berulang dapat menguras kredit Vertex | Middleware in-memory sederhana |
+| 4 | ~~`/settings/account` tertaut tetapi halamannya tidak ada~~ | **Sudah diperbaiki** (22 Okt): halaman `AccountForm` ditambahkan | — |
+| 5 | **Golden-set evaluasi** agen (§12.1) belum diimplementasikan | Kualitas keputusan agent tidak diuji regresi saat prompt berubah | 5–10 kasus + skrip pembanding |
+| 6 | Pemisahan peran pengguna belum ada (satu password demo) | Peninjau demo memegang hak menyetujui | Diterima sebagai batasan; sampaikan terbuka |
+| 7 | **Deploy berhasil** — diverifikasi `claimguard-api-00007` dan `claimguard-web-00006` (22 Okt 2026). Sebelumnya `deploy-api.sh` gagal start karena `CORS_ORIGINS` dikirim sebagai URL mentah, padahal `cors_origins` bertipe `list[str]` dan pydantic-settings mem-parsing env sebagai JSON. Sudah diperbaiki di `infra/deploy-api.sh` | NFR-12 terpenuhi | — |
+| 8 | Frontend belum mengonsumsi beberapa endpoint ops di UI (mis. purge, `/settings/courier-thresholds` PUT, `/connections` PATCH) | Fitur backend ada tetapi tidak terlihat di demo | Pastikan tombolnya ada di `/settings/privacy` dan `/settings/connections` |
+| 9 | Pemisahan peran (admin vs peninjau) belum ada di UI Akun | Semua sesi berhak menyetujui klaim | Diterima sebagai batasan demo, dinyatakan di `/settings/account` |
+| 10 | **Registrasi, akun per pengguna, dan reset kata sandi lewat email belum ada** | Halaman login memakai email akun demo tunggal; tautan lupa kata sandi menjelaskan jalur PIC | Sengaja di luar lingkup (single-tenant). Ditambah tabel user + verifikasi email bila produk dikomersialkan |
+| 11 | **Tidak ada paywall/subscription** | Semua fitur terbuka selama demo | Keputusan sadar: paywall tidak menambah nilai penilaian dan menyembunyikan fitur yang dinilai. Model bisnis disampaikan di deck, bukan dikunci di produk |
+
+Celah nomor 1, 2, dan 7 adalah **blocking** untuk demo utama; sisanya bersifat penyempurnaan atau dinyatakan terbuka sebagai batasan.

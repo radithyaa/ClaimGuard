@@ -67,8 +67,10 @@ async function request<T>(method: string, path: string, opts: { query?: Query; b
   } catch {
     throw new ApiError(0, "network_error", "Tidak dapat terhubung ke server. Periksa koneksi.");
   }
-  // Sesi habis/tidak valid: kembali ke login (kecuali saat memanggil login itu sendiri)
-  if (res.status === 401 && path !== "/auth/login") {
+  // Sesi habis/tidak valid: kembali ke login (kecuali saat memanggil login itu sendiri).
+  // `/auth/session` juga dikecualikan: 401 di sana hanya berarti "belum masuk", dan
+  // halaman login memanggilnya sebelum pengguna punya sesi.
+  if (res.status === 401 && path !== "/auth/login" && path !== "/auth/session") {
     clearSession();
     redirectToLogin();
   }
@@ -96,9 +98,14 @@ export interface ShipmentQuery extends Query {
   offset?: number;
 }
 
+export type SessionStatus = { authenticated: boolean; user: string | null; auth_required: boolean };
+
 export const api = {
   auth: {
     login: (password: string) => request<{ token: string; expires_in: number }>("POST", "/auth/login", { body: { password } }),
+    /** Status sesi dari cookie httpOnly; token tidak ikut dikirim balik. */
+    session: () => request<SessionStatus>("GET", "/auth/session"),
+    logout: () => request<void>("POST", "/auth/logout"),
   },
   shipments: {
     list: (query: ShipmentQuery) => request<Paginated<Shipment>>("GET", "/shipments", { query }),

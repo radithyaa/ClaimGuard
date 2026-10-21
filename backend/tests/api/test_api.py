@@ -206,6 +206,27 @@ async def test_reject_requires_reason_and_blocks_approve(client, db, monkeypatch
     assert (await client.post(f"/claims/{claim_id}/approve")).status_code == 409
 
 
+async def test_auth_session_and_logout(client, monkeypatch):
+    """Sesi dicek di server lewat cookie httpOnly; token tidak pernah dikirim ke penjaga rute."""
+    # Tanpa AUTH_REQUIRED: semua dianggap sesi demo yang sah
+    anon = (await client.get("/auth/session")).json()
+    assert anon == {"authenticated": True, "user": "admin", "auth_required": False}
+
+    monkeypatch.setattr(get_settings(), "auth_required", True)
+    assert (await client.get("/auth/session")).json()["authenticated"] is False
+
+    # Login menyetel cookie; klien test menyimpannya otomatis
+    assert (await client.post("/auth/login", json={"password": get_settings().demo_password})).status_code == 200
+    session = (await client.get("/auth/session")).json()
+    assert session == {"authenticated": True, "user": "admin", "auth_required": True}
+    assert "token" not in session  # jangan pernah membocorkan token ke halaman
+
+    # Logout menghapus cookie dan idempoten
+    assert (await client.post("/auth/logout")).status_code == 204
+    assert (await client.get("/auth/session")).json()["authenticated"] is False
+    assert (await client.post("/auth/logout")).status_code == 204
+
+
 async def test_auth_required_protects_mutations(client, monkeypatch):
     monkeypatch.setattr(get_settings(), "auth_required", True)
     assert (await client.post("/monitoring/scan")).status_code == 401

@@ -1,20 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 
 import { hasSession, redirectToLogin } from "@/lib/auth";
 
 /**
- * Penjaga rute dashboard: tanpa sesi tersimpan, arahkan ke /login?next=.
- * Konten baru dirender setelah dicek di browser agar halaman tidak sempat berkedip.
+ * Lapisan kedua penjaga rute. Pengecekan utama ada di server (`app/(dashboard)/layout.tsx`),
+ * yang sudah menolak pengguna tanpa sesi sebelum HTML dikirim.
+ *
+ * Komponen ini menangani kasus sesi HABIS saat tab dibiarkan terbuka lama: token di browser
+ * kedaluwarsa sehingga aksi tulis akan gagal 401. Konten tidak disembunyikan, agar tidak ada
+ * kedipan saat pindah halaman.
  */
 export function AuthGuard({ children }: { children: React.ReactNode }) {
-  const [ok, setOk] = useState(false);
-
   useEffect(() => {
-    if (hasSession()) setOk(true);
-    else redirectToLogin();
+    if (!hasSession()) redirectToLogin();
   }, []);
 
-  return ok ? <>{children}</> : null;
+  return <>{children}</>;
 }

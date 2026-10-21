@@ -1813,6 +1813,123 @@
         }
       }
     },
+    "/api/v1/auth/session": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Read Session",
+        "description": "Status sesi dari cookie httpOnly, dipakai penjaga rute di server (bukan di browser).\n\nTidak memakai dependency `User` karena sesi yang tidak valid bukan error: endpoint ini\nsendiri yang melaporkan `authenticated: false` tanpa 401.",
+        "operationId": "read_session_api_v1_auth_session_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Logout",
+        "description": "Menghapus cookie sesi. Aman dipanggil tanpa sesi (idempoten).",
+        "operationId": "logout_api_v1_auth_logout_post",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/demo/reset": {
       "post": {
         "tags": [
@@ -4239,6 +4356,36 @@
           "new_anomalies"
         ],
         "title": "ScanResultOut"
+      },
+      "SessionOut": {
+        "properties": {
+          "authenticated": {
+            "type": "boolean",
+            "title": "Authenticated"
+          },
+          "user": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User"
+          },
+          "auth_required": {
+            "type": "boolean",
+            "title": "Auth Required"
+          }
+        },
+        "type": "object",
+        "required": [
+          "authenticated",
+          "auth_required"
+        ],
+        "title": "SessionOut",
+        "description": "Status sesi untuk dicek di server (route handler Next.js). Token tidak pernah dikirim."
       },
       "ShipmentDetailOut": {
         "properties": {
