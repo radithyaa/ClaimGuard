@@ -3,10 +3,10 @@ import { ApiError } from "@/lib/api-client";
 import type { MetricsSummary, Shipment, ShipmentDetail } from "@/types/api";
 import * as db from "./data";
 import { mockClaimApprove, mockClaimGet, mockClaimReject, mockClaimsReset, mockClaimUpdate } from "./claims";
-import { mockCancel, mockRunsReset, mockStart, mockView } from "./investigation";
+import { mockBuyerRequest, mockCancel, mockRunsReset, mockStart, mockView } from "./investigation";
 
 // Skenario demo -> resi mock (backend: field "scenario" di shipments.json)
-const SCENARIO_SHIPMENT: Record<string, string> = { lost: "shp-001", damaged: "shp-002", return_fraud: "shp-003" };
+const SCENARIO_SHIPMENT: Record<string, string> = { lost: "shp-001", damaged: "shp-002", return_fraud: "shp-003", wrong_item_seller: "shp-011" };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -23,10 +23,10 @@ export async function mockRequest<T>(method: string, path: string, { query = {},
   // "/shipments/shp-001" -> "/shipments/:id"; rute lain dibiarkan apa adanya
   const route = `${method} ${path
     .replace(/^\/shipments\/[\w-]+$/, "/shipments/:id")
-    .replace(/^\/investigations\/[\w-]+(\/cancel)?$/, "/investigations/:id$1")
+    .replace(/^\/investigations\/[\w-]+(\/cancel|\/buyer-request)?$/, "/investigations/:id$1")
     .replace(/^\/claims\/[\w-]+(\/approve|\/reject)?$/, "/claims/:id$1")
     .replace(/^\/demo\/scenario\/[\w-]+$/, "/demo/scenario/:id")}`;
-  const id = path.replace(/\/(cancel|approve|reject)$/, "").split("/").pop()!;
+  const id = path.replace(/\/(cancel|approve|reject|buyer-request)$/, "").split("/").pop()!;
 
   switch (route) {
     case "POST /auth/login": {
@@ -60,6 +60,14 @@ export async function mockRequest<T>(method: string, path: string, { query = {},
     }
     case "GET /investigations/:id":
       return mockView(id) as T;
+    case "GET /investigations/:id/buyer-request":
+      try {
+        return mockBuyerRequest(id) as T;
+      } catch {
+        throw new ApiError(409, "invalid_status", "Permintaan bukti hanya untuk investigasi yang butuh bukti tambahan");
+      }
+    case "POST /investigations/:id/buyer-request":
+      return { status: "recorded" } as T;
     case "POST /investigations/:id/cancel":
       mockCancel(id);
       return { status: "cancelling" } as T;

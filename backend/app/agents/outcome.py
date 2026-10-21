@@ -10,11 +10,12 @@ OUTCOME_BY_DECISION = {
     "claim": "claim_drafted",
     "needs_evidence": "needs_evidence",
     "fraud_suspect": "fraud_suspect",
+    "seller_error": "seller_error",
 }
 
 
 class InvestigationOutcome(BaseModel):
-    outcome: Literal["claim_drafted", "needs_evidence", "fraud_suspect"]
+    outcome: Literal["claim_drafted", "needs_evidence", "fraud_suspect", "seller_error"]
     evaluation: Evaluation
     guard_applied: bool = False
     draft: ClaimDraft | None = None

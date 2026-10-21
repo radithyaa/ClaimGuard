@@ -756,6 +756,162 @@
         }
       }
     },
+    "/api/v1/investigations/{investigation_id}/buyer-request": {
+      "get": {
+        "tags": [
+          "investigations"
+        ],
+        "summary": "Get Buyer Request",
+        "description": "F6: draf permintaan bukti ke pembeli (hanya untuk outcome needs_evidence).",
+        "operationId": "get_buyer_request_api_v1_investigations__investigation_id__buyer_request_get",
+        "parameters": [
+          {
+            "name": "investigation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Investigation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuyerRequestOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "investigations"
+        ],
+        "summary": "Record Buyer Request",
+        "description": "Admin menandai pesan sudah dikirim lewat kanalnya sendiri; hanya dicatat di audit log.",
+        "operationId": "record_buyer_request_api_v1_investigations__investigation_id__buyer_request_post",
+        "parameters": [
+          {
+            "name": "investigation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Investigation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BuyerRequestIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Record Buyer Request Api V1 Investigations  Investigation Id  Buyer Request Post"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        }
+      }
+    },
     "/api/v1/investigations/{investigation_id}/stream": {
       "get": {
         "tags": [
@@ -2010,7 +2166,8 @@
               "enum": [
                 "lost",
                 "damaged",
-                "return_fraud"
+                "return_fraud",
+                "wrong_item_seller"
               ],
               "type": "string",
               "title": "Name"
@@ -2612,6 +2769,71 @@
           "file"
         ],
         "title": "Body_import_shipments_api_v1_shipments_import_post"
+      },
+      "BuyerRequestIn": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 10,
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "title": "BuyerRequestIn"
+      },
+      "BuyerRequestOut": {
+        "properties": {
+          "investigation_id": {
+            "type": "string",
+            "title": "Investigation Id"
+          },
+          "tracking_number": {
+            "type": "string",
+            "title": "Tracking Number"
+          },
+          "courier": {
+            "type": "string",
+            "title": "Courier"
+          },
+          "missing_evidence": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing Evidence"
+          },
+          "deadline": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "investigation_id",
+          "tracking_number",
+          "courier",
+          "missing_evidence",
+          "deadline",
+          "message"
+        ],
+        "title": "BuyerRequestOut",
+        "description": "F6: draf pesan ke pembeli; tidak dikirim otomatis."
       },
       "CameraTimeDrift": {
         "properties": {
@@ -3528,7 +3750,8 @@
                 "enum": [
                   "claim_drafted",
                   "needs_evidence",
-                  "fraud_suspect"
+                  "fraud_suspect",
+                  "seller_error"
                 ]
               },
               {
@@ -3676,7 +3899,8 @@
                 "enum": [
                   "claim_drafted",
                   "needs_evidence",
-                  "fraud_suspect"
+                  "fraud_suspect",
+                  "seller_error"
                 ]
               },
               {

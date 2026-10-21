@@ -24,6 +24,22 @@
       "shipment": "SCP5566778899",
       "duration_sec": 40,
       "description": "Video unboxing pembeli: earphone"
+    },
+    {
+      "key": "cctv_packing_02",
+      "kind": "cctv",
+      "file": "cctv_packing_02.mp4",
+      "recorded_start": "2026-10-17T01:03:00Z",
+      "duration_sec": 120,
+      "description": "CCTV meja packing 2, gudang Bandung"
+    },
+    {
+      "key": "unboxing_kaos_hitam",
+      "kind": "unboxing",
+      "file": "unboxing_kaos_hitam.mp4",
+      "shipment": "SCP8899770011",
+      "duration_sec": 35,
+      "description": "Video unboxing pembeli: kaos merah ukuran M diterima, pesanan tertulis hitam ukuran L"
     }
   ],
   "shipments": [
@@ -64,6 +80,21 @@
       "tracking_events": [
         {"status": "Diterima pembeli", "location": "Yogyakarta", "occurred_at": "2026-10-18T08:00:00Z"},
         {"status": "Retur diajukan", "location": "Yogyakarta", "occurred_at": "2026-10-19T02:00:00Z"}
+      ]
+    },
+    {
+      "scenario": "wrong_item_seller",
+      "tracking_number": "SCP8899770011", "courier": "sicepat", "status": "returned",
+      "origin": "Bandung", "destination": "Surabaya",
+      "shipped_at": "2026-10-18T03:30:00Z", "sla_deadline": "2026-10-25T03:30:00Z",
+      "item_name": "Kaos polos hitam, ukuran L", "item_value": 95000,
+      "buyer_report": "Saya pesan kaos hitam ukuran L, tapi yang datang kaos merah ukuran M. Warnanya berbeda dari pesanan. Saya minta retur.",
+      "pack_scan": {"scanned_at": "2026-10-17T01:03:30Z", "cctv": "cctv_packing_02"},
+      "tracking_events": [
+        {"status": "Paket dikemas", "location": "Gudang Bandung", "occurred_at": "2026-10-17T01:03:30Z"},
+        {"status": "Diserahkan ke kurir", "location": "Bandung", "occurred_at": "2026-10-18T03:30:00Z"},
+        {"status": "Diterima pembeli", "location": "Surabaya", "occurred_at": "2026-10-19T07:45:00Z"},
+        {"status": "Retur diajukan", "location": "Surabaya", "occurred_at": "2026-10-20T01:00:00Z"}
       ]
     },
     {

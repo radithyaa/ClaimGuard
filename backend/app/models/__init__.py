@@ -135,7 +135,7 @@ class Investigation(Base):
     case_type: Mapped[str] = mapped_column(String(16))
     # queued | running | completed | failed | cancelled
     status: Mapped[str] = mapped_column(String(16), default="queued", index=True)
-    # claim_drafted | needs_evidence | fraud_suspect
+    # claim_drafted | needs_evidence | fraud_suspect | seller_error
     outcome: Mapped[str | None] = mapped_column(String(16), nullable=True)
     verdict: Mapped[str | None] = mapped_column(String(32), nullable=True)
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True)

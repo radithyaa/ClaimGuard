@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict
 from app.schemas.evidence import EvidenceOut
 
 InvestigationStatus = Literal["queued", "running", "completed", "failed", "cancelled"]
-Outcome = Literal["claim_drafted", "needs_evidence", "fraud_suspect"]
+Outcome = Literal["claim_drafted", "needs_evidence", "fraud_suspect", "seller_error"]
 EventType = Literal[
     "status", "tool_start", "tool_end", "thought", "decision", "done", "error", "cancelled"
 ]

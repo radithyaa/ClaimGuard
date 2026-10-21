@@ -49,6 +49,21 @@ class RejectIn(BaseModel):
     reason: str = Field(min_length=3, max_length=1000)
 
 
+class BuyerRequestOut(BaseModel):
+    """F6: draf pesan ke pembeli; tidak dikirim otomatis."""
+
+    investigation_id: str
+    tracking_number: str
+    courier: str
+    missing_evidence: list[str]
+    deadline: datetime | None
+    message: str
+
+
+class BuyerRequestIn(BaseModel):
+    message: str = Field(min_length=10, max_length=4000)
+
+
 class StartInvestigationIn(BaseModel):
     shipment_id: str = Field(min_length=1, max_length=36)
 

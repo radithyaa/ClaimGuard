@@ -47,6 +47,14 @@ const SCENARIOS: { key: DemoScenario; letter: string; title: string; tag: string
     desc: "Pembeli mengaku isi paket kurang, video packing berkata lain.",
     expected: "Ketidaksesuaian ditandai; agen tidak mengajukan klaim tanpa bukti kuat.",
   },
+  {
+    key: "wrong_item_seller",
+    letter: "D",
+    title: "Penjual salah kirim",
+    tag: "Kasus kontrol",
+    desc: "Pembeli menerima kaos merah M, padahal memesan kaos hitam L.",
+    expected: "Agen mengenali kesalahan di gudang dan tidak mengajukan klaim ke kurir.",
+  },
 ];
 
 const AGENDA = [
