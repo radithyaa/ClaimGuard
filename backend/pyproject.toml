@@ -1,0 +1,36 @@
+[project]
+name = "claimguard-backend"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    # google-adk 2.11.0 mensyaratkan fastapi>=0.133; pin <0.120 lama membuat
+    # resolusi dependensi mustahil (ResolutionImpossible) dan image gagal dibangun.
+    "fastapi>=0.133,<1",
+    "uvicorn[standard]>=0.37,<1",
+    "pydantic>=2.11,<3",
+    "pydantic-settings>=2.11,<3",
+    "sqlalchemy>=2.0.44,<2.1",
+    "psycopg[binary]>=3.2,<3.3",
+    "google-adk==2.11.0",
+    "google-genai>=1.40",
+    "google-cloud-storage>=3.4,<4",
+    "apscheduler>=3.11,<4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.4,<9",
+    "pytest-asyncio>=1.2,<2",
+    "ruff>=0.13",
+    # ffmpeg bawaan pip untuk dev lokal (Windows); Docker memakai ffmpeg dari apt
+    "imageio-ffmpeg>=0.6,<0.7",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
