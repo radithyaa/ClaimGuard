@@ -15,10 +15,7 @@ from sqlalchemy import select
 
 from app.agents.agent import APP_NAME, START_MESSAGE, build_root_agent, initial_state
 from app.agents.outcome import persist_outcome
-from app.core.config import get_settings
 from app.models import Evidence
-from app.schemas.agent_outputs import TimestampEvidence, VisionAnalysis
-from app.services import ai_cache, gemini_client
 from tests.conftest import make_db, seed_case
 
 Step = Callable[[], list[types.Part]] | Exception
@@ -99,22 +96,6 @@ def model_sources(events: list) -> set[str]:
     return {(e.custom_metadata or {}).get("source") for e in events
             if e.author in ("investigator", "evaluator", "drafter") and e.content and e.custom_metadata}
 
-
-@pytest.fixture
-def ai(monkeypatch, tmp_path):
-    """Mode AI & cache terisolasi; vision Gemini diganti hasil tetap."""
-    monkeypatch.setattr(get_settings(), "ai_cache_dir", str(tmp_path / "cache"))
-    mode = {"value": "live"}
-    monkeypatch.setattr(ai_cache, "current_mode", lambda: mode["value"])
-
-    async def fake_vision(contents, schema, **kw):
-        if mode["value"] != "live":
-            raise gemini_client.AIUnavailable("Gemini mati")
-        return VisionAnalysis(verdict="item_packed", confidence=0.92,
-                              timestamp_evidence=[TimestampEvidence(t_sec=10, label="resi dipindai")])
-
-    monkeypatch.setattr(gemini_client, "generate_structured", fake_vision)
-    return mode
 
 
 async def test_live_run_drafts_claim_and_records_cache(ai, seeded, db, tmp_path):

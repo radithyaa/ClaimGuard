@@ -1,0 +1,6 @@
+{
+  "_readme": "Dipakai seed HANYA bila ekstraksi AI (live/cache) tidak tersedia; ditandai source=manual. Isi disalin dari dokumen .md.",
+  "jne": {"claim_window_days": 14, "required_docs": ["Foto resi", "Video proses packing", "Bukti nilai barang", "Foto/video kondisi barang saat diterima (kerusakan)"], "max_compensation": "Maks. 10x ongkir tanpa asuransi; sesuai nilai barang bila berasuransi (maks. Rp10.000.000)", "insurance_note": "", "exclusions": ["Barang mudah pecah tanpa label dan kemasan tambahan", "Kemasan tidak memadai"]},
+  "jnt": {"claim_window_days": 7, "required_docs": ["Nomor resi", "Video unboxing tanpa jeda", "Foto kemasan luar", "Invoice"], "max_compensation": "Maks. Rp1.000.000 tanpa asuransi", "insurance_note": "", "exclusions": ["Tanpa video unboxing utuh", "Barang cair/mudah pecah tanpa penanda"]},
+  "sicepat": {"claim_window_days": 10, "required_docs": ["Foto resi", "Video unboxing", "Foto barang rusak"], "max_compensation": "Maks. 10x ongkir tanpa asuransi", "insurance_note": "", "exclusions": ["Klaim isi kosong tanpa bukti segel utuh"]}
+}

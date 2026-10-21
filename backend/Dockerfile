@@ -1,55 +1,28 @@
-# =============================================================================
-# ClaimGuard API — FastAPI + Google ADK + FFmpeg
-#
-# Dasar: SRS §9 (python:3.12-slim + ffmpeg) dan §10 (Cloud Run, satu instance).
-# Keperluan kode yang menentukan isi image:
-#   - app/agents/prompts/*.md  dibaca runtime via pathlib -> wajib ikut COPY
-#   - app/services/video_service.py -> butuh binary ffmpeg (cpython:3.12-slim)
-#   - app/services/storage_service.py -> google-cloud-storage
-#   - app/agents/tools/video_tools.py -> tempfile (TMPDIR) untuk klip sementara
-# =============================================================================
+# Image Cloud Run backend ClaimGuard (SRS 10): Python 3.12 + FFmpeg.
+# Build & deploy: gcloud run deploy claimguard-api --source . (lihat README)
+FROM python:3.12-slim
 
-FROM python:3.12-slim AS runtime
-
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    ENV=cloud \
-    PORT=8080
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# ffmpeg: dipakai video_service.py. ca-certificates: panggilan HTTPS ke Vertex/GCS.
-# tini: reaper proses supaya subprocess ffmpeg tidak jadi zombie saat cancel (FR-20).
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg ca-certificates tini \
+    && apt-get install -y --no-install-recommends ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
+WORKDIR /srv
+COPY requirements.lock .
+RUN pip install -r requirements.lock
 
-# Dependensi lebih dulu agar layer cache tidak invalid setiap kali source berubah.
-# Catatan: proyek ini tidak dipasang sebagai paket (tidak ada [tool.setuptools]), jadi
-# dependensi dibaca dari pyproject.toml lalu di-install sebagai wheel secara eksplisit.
-COPY pyproject.toml ./
-RUN pip install --upgrade pip \
-    && python -c "import tomllib,sys; print('\\n'.join(tomllib.load(open('pyproject.toml','rb'))['project']['dependencies']))" > /tmp/requirements.txt \
-    && pip install -r /tmp/requirements.txt \
-    && rm -f /tmp/requirements.txt \
-    && rm -rf /root/.cache
-
-# Prompt .md adalah aset berversi yang dibaca saat runtime, bukan bagian install.
 COPY app ./app
+COPY data/mock ./data/mock
+COPY data/cache ./data/cache
 
-# Folder kerja runtime. Tidak di-commit; dibuat di image agar writable oleh user non-root.
-RUN useradd --create-home --uid 10001 claimguard \
-    && mkdir -p /app/data/cache /app/storage \
-    && chown -R claimguard:claimguard /app
+RUN useradd --create-home --uid 10001 appuser && chown -R appuser /srv
+USER appuser
 
-USER claimguard
-
-EXPOSE 8080
-
-ENTRYPOINT ["/usr/bin/tini", "--"]
-
-# Cloud Run mengirim SIGTERM; uvicorn menutup koneksi SSE yang masih terbuka.
-# --proxy-headers agar request_id/skema benar di belakang proxy Cloud Run.
-CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT} --proxy-headers --timeout-keep-alive 75"]
+ENV ENV=cloud STORAGE_BACKEND=gcs SEED_ON_STARTUP=true
+# Satu worker: registry investigasi & SSE ada di memori proses (NFR-13)
+CMD exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1 \
+    --proxy-headers --forwarded-allow-ips="*"
