@@ -56,9 +56,18 @@ async function request<T>(method: string, path: string, opts: { query?: Query; b
     const { mockRequest } = await import("@/lib/mock/handlers");
     return mockRequest<T>(method, path, opts);
   }
+  // Penanda `web:` = path relatif terhadap origin WEB (route handler Next.js), bukan API.
+  // Tanpa ini `/auth/login` menjadi `https://api.../api/v1/auth/login` sehingga cookie sesi
+  // menempel di domain API dan guard server di domain web tidak pernah menerimanya.
+  // Catatan: jangan memakai awalan `//` — browser membacanya sebagai URL protocol-relative
+  // (`http://api/...`) dan gagal resolve.
+  const isWebRoute = path.startsWith("web:");
+  const url = isWebRoute
+    ? `${path.slice(4)}${toQuery(opts.query)}`
+    : `${API_PREFIX}${path}${toQuery(opts.query)}`;
   let res: Response;
   try {
-    res = await fetch(`${API_PREFIX}${path}${toQuery(opts.query)}`, {
+    res = await fetch(url, {
       method,
       headers: authHeaders(opts.body !== undefined),
       body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
@@ -67,10 +76,10 @@ async function request<T>(method: string, path: string, opts: { query?: Query; b
   } catch {
     throw new ApiError(0, "network_error", "Tidak dapat terhubung ke server. Periksa koneksi.");
   }
-  // Sesi habis/tidak valid: kembali ke login (kecuali saat memanggil login itu sendiri).
-  // `/auth/session` juga dikecualikan: 401 di sana hanya berarti "belum masuk", dan
-  // halaman login memanggilnya sebelum pengguna punya sesi.
-  if (res.status === 401 && path !== "/auth/login" && path !== "/auth/session") {
+  // Sesi habis/tidak valid: kembali ke login (kecuali login/logout itu sendiri, dan
+  // `/auth/session` yang memang 401 saat belum masuk).
+  const isAuthPath = path === "/auth/session" || path.startsWith("web:");
+  if (res.status === 401 && !isAuthPath) {
     redirectToLogin();
   }
   if (!res.ok) {
@@ -108,10 +117,10 @@ export const api = {
      * melihat "belum login" -> pengguna terpental balik ke halaman login.
      */
     login: (password: string) =>
-      request<{ ok: boolean; expires_in: number }>("POST", "/auth/login", { body: { password } }),
+      request<{ ok: boolean; expires_in: number }>("POST", "web:/api/auth/login", { body: { password } }),
     /** Status sesi dari cookie httpOnly; token tidak ikut dikirim balik. */
     session: () => request<SessionStatus>("GET", "/auth/session"),
-    logout: () => request<void>("POST", "/auth/logout"),
+    logout: () => request<void>("POST", "web:/api/auth/logout"),
   },
   shipments: {
     list: (query: ShipmentQuery) => request<Paginated<Shipment>>("GET", "/shipments", { query }),
