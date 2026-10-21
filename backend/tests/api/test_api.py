@@ -16,9 +16,10 @@ from app.main import create_app
 from app.models import Investigation
 from app.repositories import shipments as ship_repo
 from app.services import demo_data, investigation_runner, monitoring
-from tests.integration.test_pipeline import ScriptedLlm, live_models
+from tests.integration.test_pipeline import ScriptedLlm, clip_ids, live_models, txt
 
 LOST = "JNE0012345678"
+SELLER = "SCP8899770011"  # C2: penjual salah kirim
 
 
 @pytest.fixture(scope="session")
@@ -47,12 +48,16 @@ async def client(db, storage, samples_dir, ai, monkeypatch) -> AsyncGenerator[ht
     await investigation_runner.cancel_all()
 
 
-def use_scripted_agent(monkeypatch, db, tracking: str = LOST, **kw) -> None:
+def use_scripted_agent(monkeypatch, db, tracking: str = LOST, decision: dict | None = None,
+                       **kw) -> None:
     with db() as s:
         ship = ship_repo.get_by_tracking(s, tracking)
         case = {"shipment_id": ship.id, "tracking_number": ship.tracking_number,
                 "item_value": ship.item_value}
     models = live_models(case, db, **kw)
+    if decision:  # ganti keputusan Evaluator; Drafter dilewati bila bukan "claim"
+        models["evaluator"] = ScriptedLlm(model="evaluator", steps=[
+            lambda: txt({"verdict": "-", "reason": "-", "evidence_ids": clip_ids(db), **decision})])
     monkeypatch.setattr(investigation_runner, "agent_factory", lambda: build_root_agent(models))
 
 
@@ -79,17 +84,18 @@ async def test_health_and_uniform_errors(client):
 
 async def test_shipments_list_filter_and_detail(client):
     page = (await client.get("/shipments", params={"limit": 100})).json()
-    assert page["total"] == 15 and all(s["is_simulated"] for s in page["items"])
+    assert page["total"] == 16 and all(s["is_simulated"] for s in page["items"])
     jne = (await client.get("/shipments", params={"courier": "jne"})).json()
     assert jne["total"] == 5 and {s["courier"] for s in jne["items"]} == {"jne"}
     found = (await client.get("/shipments", params={"q": "surabaya"})).json()["items"]
-    assert [s["tracking_number"] for s in found] == [LOST]
-    detail = (await client.get(f"/shipments/{found[0]['id']}")).json()
+    assert {s["tracking_number"] for s in found} == {LOST, SELLER}  # keduanya ke Surabaya
+    lost = next(s for s in found if s["tracking_number"] == LOST)
+    detail = (await client.get(f"/shipments/{lost['id']}")).json()
     assert len(detail["tracking_events"]) == 3 and detail["anomaly"] is None
     # Paket belum sampai: tenggat klaim = batas SLA + 14 hari kebijakan JNE
     sla = datetime.fromisoformat(detail["sla_deadline"])
     assert datetime.fromisoformat(detail["claim_deadline"]) == sla + timedelta(days=14)
-    assert found[0]["claim_deadline"] == detail["claim_deadline"]
+    assert lost["claim_deadline"] == detail["claim_deadline"]
 
 
 async def test_scan_flags_scenarios_and_is_idempotent(client, db, monkeypatch):
@@ -100,7 +106,7 @@ async def test_scan_flags_scenarios_and_is_idempotent(client, db, monkeypatch):
 
     r = (await client.post("/monitoring/scan")).json()
     flagged = {a["code"] for a in r["new_anomalies"]}
-    assert r["scanned"] == 15 and len(r["new_anomalies"]) == 4
+    assert r["scanned"] == 16 and len(r["new_anomalies"]) == 5
     assert flagged == {"SLA_EXCEEDED", "BUYER_REPORTED_DAMAGE", "RETURN_DISPUTE"}
     # Dua resi 'lost': skenario utama (jam scan CCTV) dan satu resi SLA basi tanpa pergerakan.
     lost = sorted(a["reason_json"].get("days_stalled", a["reason_json"].get("days_late", 0))
@@ -108,7 +114,7 @@ async def test_scan_flags_scenarios_and_is_idempotent(client, db, monkeypatch):
     assert len(lost) == 2
     assert (await client.post("/monitoring/scan")).json()["new_anomalies"] == []
     listed = (await client.get("/shipments", params={"limit": 100})).json()["items"]
-    assert sum(1 for s in listed if s["active_anomaly"]) == 4
+    assert sum(1 for s in listed if s["active_anomaly"]) == 5
 
 
 async def test_lost_scenario_end_to_end_with_hitl(client, db, monkeypatch):
@@ -196,6 +202,39 @@ async def test_low_confidence_needs_evidence_creates_no_claim(client, db, monkey
     assert (await client.get("/claims")).json()["total"] == 0
 
 
+async def test_seller_error_closes_case_without_claim(client, db, monkeypatch):
+    use_scripted_agent(monkeypatch, db, tracking=SELLER, decision={
+        "decision": "seller_error", "confidence": 0.9,
+        "verdict": "barang yang dikemas berbeda dari pesanan",
+        "reason": "CCTV detik 30 memperlihatkan kaos merah ukuran M dikemas, pesanan hitam ukuran L."})
+    inv_id = (await client.post("/demo/scenario/wrong_item_seller")).json()["investigation_id"]
+    inv = await wait_status(client, inv_id, "completed", "failed")
+    assert inv["outcome"] == "seller_error" and inv["claim_id"] is None
+    assert (await client.get("/claims")).json()["total"] == 0
+    detail = (await client.get(f"/shipments/{inv['shipment_id']}")).json()
+    assert detail["anomaly"] is None  # kasus ditutup dengan keputusan, tidak ditagihkan ke kurir
+    assert (await client.get(f"/investigations/{inv_id}/buyer-request")).status_code == 409
+
+
+async def test_buyer_request_drafted_for_needs_evidence(client, db, monkeypatch):
+    use_scripted_agent(monkeypatch, db, decision={
+        "decision": "needs_evidence", "confidence": 0.5,
+        "missing_evidence": ["video unboxing utuh tanpa jeda", "foto kemasan luar"]})
+    inv_id = (await client.post("/demo/scenario/lost")).json()["investigation_id"]
+    assert (await wait_status(client, inv_id, "completed"))["outcome"] == "needs_evidence"
+    draft = (await client.get(f"/investigations/{inv_id}/buyer-request")).json()
+    assert draft["missing_evidence"] == ["video unboxing utuh tanpa jeda", "foto kemasan luar"]
+    assert LOST in draft["message"] and "- foto kemasan luar" in draft["message"]
+    assert draft["deadline"] and "paling lambat" in draft["message"]
+    assert (await client.post(f"/investigations/{inv_id}/buyer-request",
+                              json={"message": "x"})).status_code == 422
+    sent = await client.post(f"/investigations/{inv_id}/buyer-request", json={"message": draft["message"]})
+    assert sent.json() == {"status": "recorded"}
+    actions = [a["action"] for a in (await client.get("/audit-logs", params={"limit": 50})).json()]
+    assert "buyer_evidence_requested" in actions
+    assert (await client.get("/claims")).json()["total"] == 0  # tidak ada yang dikirim ke kurir
+
+
 async def test_reject_requires_reason_and_blocks_approve(client, db, monkeypatch):
     use_scripted_agent(monkeypatch, db)
     inv_id = (await client.post("/demo/scenario/lost")).json()["investigation_id"]
@@ -281,7 +320,7 @@ async def test_import_shipments_csv(client):
 
     found = (await client.get("/shipments", params={"q": "CSV0000000001"})).json()
     assert found["total"] == 1 and found["items"][0]["courier"] == "jne"
-    assert (await client.get("/shipments", params={"limit": 100})).json()["total"] == 16
+    assert (await client.get("/shipments", params={"limit": 100})).json()["total"] == 17
 
     missing = (await client.post("/shipments/import",
                                  files={"file": ("x.csv", b"a,b\n1,2\n", "text/csv")}))
@@ -339,7 +378,7 @@ async def test_demo_reset_restores_data_and_keeps_policies(client, db, monkeypat
     inv_id = (await client.post("/demo/scenario/lost")).json()["investigation_id"]
     await wait_status(client, inv_id, "completed")
     report = (await client.post("/demo/reset")).json()
-    assert report["shipments"] == 15 and report["missing_media"] == []
+    assert report["shipments"] == 16 and report["missing_media"] == []
     assert (await client.get("/claims")).json()["total"] == 0
     assert (await client.get("/anomalies")).json() == []
     assert len((await client.get("/couriers/policies")).json()) == 3

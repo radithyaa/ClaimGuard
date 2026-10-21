@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 CaseType = Literal["lost", "damaged", "return_fraud"]
 MediaFocus = Literal["packing", "damage", "consistency"]
-Decision = Literal["claim", "needs_evidence", "fraud_suspect"]
+Decision = Literal["claim", "needs_evidence", "fraud_suspect", "seller_error"]
 
 
 class TimestampEvidence(BaseModel):

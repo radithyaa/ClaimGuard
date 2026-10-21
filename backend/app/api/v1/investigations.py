@@ -13,11 +13,18 @@ from app.models import Anomaly, Claim
 from app.repositories import investigations as inv_repo
 from app.repositories import policies as policy_repo
 from app.repositories import shipments as ship_repo
-from app.schemas.claim import InvestigationViewOut, StartInvestigationIn, StartInvestigationOut
+from app.schemas.claim import (
+    BuyerRequestIn,
+    BuyerRequestOut,
+    InvestigationViewOut,
+    StartInvestigationIn,
+    StartInvestigationOut,
+)
 from app.schemas.common import ERROR_RESPONSES
 from app.schemas.evidence import EvidenceOut
 from app.schemas.investigation import InvestigationOut
 from app.schemas.shipment import CourierPolicyOut
+from app.services import buyer_request
 from app.services import investigation_runner as runner
 
 router = APIRouter(tags=["investigations"], responses=ERROR_RESPONSES)
@@ -57,6 +64,20 @@ def get_investigation(investigation_id: str, db: DB) -> InvestigationViewOut:
 def cancel_investigation(investigation_id: str, user: User) -> dict:
     runner.cancel(investigation_id, actor=user)
     return {"status": "cancelling"}
+
+
+@router.get("/investigations/{investigation_id}/buyer-request", response_model=BuyerRequestOut)
+def get_buyer_request(investigation_id: str, db: DB) -> BuyerRequestOut:
+    """F6: draf permintaan bukti ke pembeli (hanya untuk outcome needs_evidence)."""
+    return BuyerRequestOut(**buyer_request.build(db, investigation_id))
+
+
+@router.post("/investigations/{investigation_id}/buyer-request")
+def record_buyer_request(investigation_id: str, body: BuyerRequestIn, db: DB, user: User) -> dict:
+    """Admin menandai pesan sudah dikirim lewat kanalnya sendiri; hanya dicatat di audit log."""
+    result = buyer_request.mark_sent(db, investigation_id, body.message, actor=user)
+    db.commit()
+    return result
 
 
 def _sse(data: dict) -> str:

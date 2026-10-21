@@ -34,7 +34,7 @@ from app.services import policy_extractor, storage_service, video_service
 from app.services.settings_service import ensure_thresholds
 
 log = logging.getLogger(__name__)
-SCENARIOS = ("lost", "damaged", "return_fraud")
+SCENARIOS = ("lost", "damaged", "return_fraud", "wrong_item_seller")
 # urutan hapus mengikuti foreign key
 _RESET_ORDER = (InvestigationEvent, Evidence, Claim, Investigation, Anomaly, PackScanLog,
                 TrackingEvent, MediaAsset, Shipment, AuditLog)

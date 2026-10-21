@@ -71,7 +71,7 @@ def build_root_agent(models: dict[str, str | BaseLlm] | None = None) -> Sequenti
     )
     evaluator = LlmAgent(
         name="evaluator",
-        description="Memutuskan claim / needs_evidence / fraud_suspect beserta alasannya.",
+        description="Memutuskan claim / needs_evidence / fraud_suspect / seller_error beserta alasannya.",
         model=m["evaluator"],
         instruction=_instruction("evaluator"),
         output_schema=Evaluation,

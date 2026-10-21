@@ -221,7 +221,7 @@ def _complete(inv_id: str, final_state: dict[str, Any]) -> None:
         claim_id = None
         if outcome.outcome == "claim_drafted":
             claim_id = claim_service.create_from_draft(db, inv, outcome).id
-        else:  # needs_evidence: anomali dibuka lagi; fraud_suspect: ditutup dengan keputusan
+        else:  # needs_evidence: anomali dibuka lagi; fraud_suspect/seller_error: ditutup dengan keputusan
             _set_anomaly(db, inv, "open" if outcome.outcome == "needs_evidence" else "resolved")
         audit.record(db, actor="agent:evaluator", action="decision_made", entity="investigation",
                      entity_id=inv_id, payload={"decision": ev.decision,
