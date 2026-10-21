@@ -90,3 +90,13 @@ Agen **tidak punya** tool kirim klaim. `submit_claim` sepenuhnya milik `claim_se
 - ADK 2.11 menandai `SequentialAgent` sebagai deprecated (diganti `Workflow`), tetapi masih berfungsi dan `Workflow` belum bisa dipakai di semua kasus. Versi di-pin `google-adk==2.11.0`, jadi tidak ada risiko perubahan selama hackathon.
 - ADK 2.11 sudah mendukung `output_schema` bersama tools. Pemisahan Investigator/Evaluator tetap dipertahankan agar titik keputusan (FR-22) terlihat jelas di trace.
 - Instruksi agen memakai placeholder `$nama` (bukan `{nama}`) dan hanya diisi fakta tepercaya dari state. Teks pembeli sampai ke agen sebagai hasil tool dengan field `buyer_report_untrusted`.
+
+## Status Backend B (Rabu 21 Okt, sore)
+
+Sudah ada di repo. Cara jalan dan deploy: [backend/README.md](../backend/README.md).
+
+- `investigation_runner` mengikuti kontrak di atas: SSE dengan replay `Last-Event-ID`, cancel (FR-20), 409 bila investigasi ganda.
+- Monitoring deterministik, klaim dan HITL (approve/reject atomik, 409), audit log, metrik, settings runtime (mode AI dan ambang confidence dibaca agen), login demo, reset dan skenario demo.
+- Mock data 15 resi + 3 kebijakan kurir; `openapi.json` sudah diekspor.
+- 42 test (unit, pipeline ADK, API end-to-end) lulus tanpa Gemini.
+- **Belum diuji:** build Docker dan deploy Cloud Run, karena GCP belum siap dan Docker tidak terpasang di laptop pengembang.
