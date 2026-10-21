@@ -15,8 +15,10 @@ AIMode = Literal["live", "auto", "cache"]
 
 
 def current_mode() -> AIMode:
-    # TODO(Backend B): baca override dari tabel settings (PATCH /settings ai_mode)
-    return get_settings().ai_mode
+    """Mode dari tabel settings (PATCH /settings); default dari config."""
+    from app.services.settings_service import get_runtime  # impor lambat: hindari siklus
+
+    return get_runtime().ai_mode
 
 
 def cache_key(*parts: Any) -> str:

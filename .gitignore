@@ -10,5 +10,8 @@ __pycache__/
 .ruff_cache/
 node_modules/
 .next/
-# backend/data/cache/ SENGAJA di-commit: rekaman AI untuk fallback demo (SRS 13)
-# infra/ SENGAJA di-commit: skrip deploy + setup GCP (SRS 9). Hanya nilai rahasia yang tidak masuk.
+frontend/
+backend/data/samples/
+backend/env.cloud.yaml
+*.egg-info/
+

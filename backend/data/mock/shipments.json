@@ -1,0 +1,91 @@
+{
+  "_readme": "Data simulasi (FR-21). Semua waktu UTC. Jam di overlay video CCTV harus sama dengan recorded_start + detik video. Nomor resi skenario jangan diubah: rekaman cache AI dikunci per nomor resi.",
+  "media": [
+    {
+      "key": "cctv_packing_01",
+      "kind": "cctv",
+      "file": "cctv_packing_01.mp4",
+      "recorded_start": "2026-10-17T01:00:00Z",
+      "duration_sec": 180,
+      "description": "CCTV meja packing 1, gudang Bandung"
+    },
+    {
+      "key": "unboxing_vas",
+      "kind": "unboxing",
+      "file": "unboxing_vas.mp4",
+      "shipment": "JT7788990011",
+      "duration_sec": 45,
+      "description": "Video unboxing pembeli: vas keramik"
+    },
+    {
+      "key": "unboxing_earphone",
+      "kind": "unboxing",
+      "file": "unboxing_earphone.mp4",
+      "shipment": "SCP5566778899",
+      "duration_sec": 40,
+      "description": "Video unboxing pembeli: earphone"
+    }
+  ],
+  "shipments": [
+    {
+      "scenario": "lost",
+      "tracking_number": "JNE0012345678", "courier": "jne", "status": "in_transit",
+      "origin": "Bandung", "destination": "Surabaya",
+      "shipped_at": "2026-10-17T03:00:00Z", "sla_deadline": "2026-10-19T03:00:00Z",
+      "item_name": "Sepatu kulit pria", "item_value": 450000, "buyer_report": null,
+      "pack_scan": {"scanned_at": "2026-10-17T01:00:40Z", "cctv": "cctv_packing_01"},
+      "tracking_events": [
+        {"status": "Paket dikemas", "location": "Gudang Bandung", "occurred_at": "2026-10-17T01:00:40Z"},
+        {"status": "Diserahkan ke kurir", "location": "Bandung", "occurred_at": "2026-10-17T03:00:00Z"},
+        {"status": "Tiba di hub transit", "location": "Semarang", "occurred_at": "2026-10-17T21:30:00Z"}
+      ]
+    },
+    {
+      "scenario": "damaged",
+      "tracking_number": "JT7788990011", "courier": "jnt", "status": "delivered",
+      "origin": "Bandung", "destination": "Jakarta Selatan",
+      "shipped_at": "2026-10-17T04:00:00Z", "sla_deadline": "2026-10-19T04:00:00Z",
+      "item_name": "Vas keramik", "item_value": 275000,
+      "buyer_report": "Vas pecah saat dibuka, ada video unboxing.",
+      "pack_scan": {"scanned_at": "2026-10-17T01:01:35Z", "cctv": "cctv_packing_01"},
+      "tracking_events": [
+        {"status": "Diserahkan ke kurir", "location": "Bandung", "occurred_at": "2026-10-17T04:00:00Z"},
+        {"status": "Diterima pembeli", "location": "Jakarta Selatan", "occurred_at": "2026-10-18T10:15:00Z"}
+      ]
+    },
+    {
+      "scenario": "return_fraud",
+      "tracking_number": "SCP5566778899", "courier": "sicepat", "status": "returned",
+      "origin": "Bandung", "destination": "Yogyakarta",
+      "shipped_at": "2026-10-17T04:30:00Z", "sla_deadline": "2026-10-19T04:30:00Z",
+      "item_name": "Earphone nirkabel", "item_value": 620000,
+      "buyer_report": "Paket yang diterima kosong, minta retur dana.",
+      "pack_scan": {"scanned_at": "2026-10-17T01:02:30Z", "cctv": "cctv_packing_01"},
+      "tracking_events": [
+        {"status": "Diterima pembeli", "location": "Yogyakarta", "occurred_at": "2026-10-18T08:00:00Z"},
+        {"status": "Retur diajukan", "location": "Yogyakarta", "occurred_at": "2026-10-19T02:00:00Z"}
+      ]
+    },
+    {
+      "tracking_number": "JNE0099887766", "courier": "jne", "status": "in_transit",
+      "origin": "Bandung", "destination": "Medan",
+      "shipped_at": "2026-10-16T05:00:00Z", "sla_deadline": "2026-10-20T05:00:00Z",
+      "item_name": "Kaos polos 3 pcs", "item_value": 150000, "buyer_report": null,
+      "tracking_events": [
+        {"status": "Diserahkan ke kurir", "location": "Bandung", "occurred_at": "2026-10-16T05:00:00Z"},
+        {"status": "Tiba di hub transit", "location": "Jakarta", "occurred_at": "2026-10-17T02:00:00Z"}
+      ]
+    },
+    {"tracking_number": "JT1122334455", "courier": "jnt", "status": "out_for_delivery", "origin": "Bandung", "destination": "Depok", "shipped_at": "2026-10-21T02:00:00Z", "sla_deadline": "2026-10-27T02:00:00Z", "item_name": "Tas selempang", "item_value": 320000, "buyer_report": null, "tracking_events": [{"status": "Kurir menuju alamat", "location": "Depok", "occurred_at": "2026-10-22T01:00:00Z"}]},
+    {"tracking_number": "SCP1029384756", "courier": "sicepat", "status": "delivered", "origin": "Bandung", "destination": "Bekasi", "shipped_at": "2026-10-18T03:00:00Z", "sla_deadline": "2026-10-20T03:00:00Z", "item_name": "Botol minum", "item_value": 89000, "buyer_report": "Barang sudah diterima, terima kasih.", "tracking_events": [{"status": "Diterima pembeli", "location": "Bekasi", "occurred_at": "2026-10-19T06:00:00Z"}]},
+    {"tracking_number": "JNE0055443322", "courier": "jne", "status": "picked_up", "origin": "Bandung", "destination": "Malang", "shipped_at": "2026-10-21T08:00:00Z", "sla_deadline": "2026-10-28T08:00:00Z", "item_name": "Jaket denim", "item_value": 380000, "buyer_report": null, "tracking_events": [{"status": "Dijemput kurir", "location": "Bandung", "occurred_at": "2026-10-21T08:00:00Z"}]},
+    {"tracking_number": "JT6677889900", "courier": "jnt", "status": "delivered", "origin": "Bandung", "destination": "Bogor", "shipped_at": "2026-10-18T05:00:00Z", "sla_deadline": "2026-10-20T05:00:00Z", "item_name": "Lampu meja", "item_value": 210000, "buyer_report": null, "tracking_events": [{"status": "Diterima pembeli", "location": "Bogor", "occurred_at": "2026-10-19T09:00:00Z"}]},
+    {"tracking_number": "SCP9988776655", "courier": "sicepat", "status": "in_transit", "origin": "Bandung", "destination": "Makassar", "shipped_at": "2026-10-21T03:00:00Z", "sla_deadline": "2026-10-29T03:00:00Z", "item_name": "Jam tangan", "item_value": 540000, "buyer_report": null, "tracking_events": [{"status": "Diserahkan ke kurir", "location": "Bandung", "occurred_at": "2026-10-21T03:00:00Z"}]},
+    {"tracking_number": "JNE0011223344", "courier": "jne", "status": "created", "origin": "Bandung", "destination": "Tangerang", "shipped_at": "2026-10-22T01:00:00Z", "sla_deadline": "2026-10-27T01:00:00Z", "item_name": "Buku resep", "item_value": 95000, "buyer_report": null, "tracking_events": []},
+    {"tracking_number": "JT5544332211", "courier": "jnt", "status": "in_transit", "origin": "Bandung", "destination": "Semarang", "shipped_at": "2026-10-21T06:00:00Z", "sla_deadline": "2026-10-26T06:00:00Z", "item_name": "Sprei katun", "item_value": 260000, "buyer_report": null, "tracking_events": [{"status": "Diserahkan ke kurir", "location": "Bandung", "occurred_at": "2026-10-21T06:00:00Z"}]},
+    {"tracking_number": "SCP2233445566", "courier": "sicepat", "status": "delivered", "origin": "Bandung", "destination": "Cirebon", "shipped_at": "2026-10-19T02:00:00Z", "sla_deadline": "2026-10-21T02:00:00Z", "item_name": "Mug custom", "item_value": 75000, "buyer_report": null, "tracking_events": [{"status": "Diterima pembeli", "location": "Cirebon", "occurred_at": "2026-10-20T04:00:00Z"}]},
+    {"tracking_number": "JNE0066778899", "courier": "jne", "status": "out_for_delivery", "origin": "Bandung", "destination": "Bandar Lampung", "shipped_at": "2026-10-20T03:00:00Z", "sla_deadline": "2026-10-26T03:00:00Z", "item_name": "Sepatu lari", "item_value": 499000, "buyer_report": null, "tracking_events": [{"status": "Kurir menuju alamat", "location": "Bandar Lampung", "occurred_at": "2026-10-22T02:00:00Z"}]},
+    {"tracking_number": "JT9900112233", "courier": "jnt", "status": "picked_up", "origin": "Bandung", "destination": "Denpasar", "shipped_at": "2026-10-22T02:00:00Z", "sla_deadline": "2026-10-30T02:00:00Z", "item_name": "Kain batik", "item_value": 185000, "buyer_report": null, "tracking_events": [{"status": "Dijemput kurir", "location": "Bandung", "occurred_at": "2026-10-22T02:00:00Z"}]},
+    {"tracking_number": "SCP7788001122", "courier": "sicepat", "status": "delivered", "origin": "Bandung", "destination": "Solo", "shipped_at": "2026-10-18T07:00:00Z", "sla_deadline": "2026-10-20T07:00:00Z", "item_name": "Tumbler stainless", "item_value": 135000, "buyer_report": null, "tracking_events": [{"status": "Diterima pembeli", "location": "Solo", "occurred_at": "2026-10-19T08:00:00Z"}]}
+  ]
+}

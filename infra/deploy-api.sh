@@ -21,7 +21,7 @@ DB_NAME="${DB_NAME:-claimguard}"
 DB_USER="${DB_USER:-claimguard}"
 BUCKET="${BUCKET:-${PROJECT_ID}-claimguard-media}"
 SA_RUN="${SA_RUN:-claimguard-run}"
-GEMINI_MODEL="${GEMINI_MODEL:-gemini-flash-latest}"
+GEMINI_MODEL="${GEMINI_MODEL:-gemini-2.5-flash}"
 GCP_LOCATION="${GCP_LOCATION:-global}"
 AI_MODE="${AI_MODE:-auto}"
 PUBLIC_BASE_URL="${PUBLIC_BASE_URL:-}"
@@ -56,6 +56,11 @@ ENV_VARS+=",GCP_PROJECT=$PROJECT_ID"
 ENV_VARS+=",GCP_LOCATION=$GCP_LOCATION"
 ENV_VARS+=",GEMINI_MODEL=$GEMINI_MODEL"
 ENV_VARS+=",AI_MODE=$AI_MODE"
+ENV_VARS+=",AUTH_REQUIRED=true"
+# CORS: diisi setelah URL frontend tersedia (NFR-06).
+if [[ -n "${CORS_ORIGINS:-}" ]]; then
+  ENV_VARS+=",CORS_ORIGINS=$CORS_ORIGINS"
+fi
 # Dibaca ADK untuk memanggil model (NFR-04: tanpa API key, lewat service account).
 ENV_VARS+=",GOOGLE_GENAI_USE_VERTEXAI=TRUE"
 ENV_VARS+=",GOOGLE_CLOUD_PROJECT=$PROJECT_ID"
@@ -69,7 +74,11 @@ fi
 # Buat sekali:
 #   printf 'postgresql+psycopg://%s:%s@/%s?host=/cloudsql/%s' "$DB_USER" "$PW" "$DB_NAME" "$DB_CONN" \
 #     | gcloud secrets create claimguard-database-url --data-file=-
+# config.py menolak start bila ENV=cloud memakai SESSION_SECRET/DEMO_PASSWORD default
+# (_cloud_requires_real_secrets), jadi keduanya wajib dari Secret Manager.
 SECRETS="DATABASE_URL=claimguard-database-url:latest"
+SECRETS+=",SESSION_SECRET=claimguard-session-secret:latest"
+SECRETS+=",DEMO_PASSWORD=claimguard-demo-password:latest"
 
 # Cloud SQL Proxy sidecar disediakan oleh --add-cloudsql-instances (socket /cloudsql/<conn>).
 CMD=(gcloud run deploy "$SERVICE"

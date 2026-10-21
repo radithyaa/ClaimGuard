@@ -23,6 +23,7 @@ from app.agents.tools.video_tools import clip_cctv_video
 from app.agents.tools.vision_tools import analyze_media
 from app.core.config import get_settings
 from app.schemas.agent_outputs import ClaimDraft, Evaluation
+from app.services import gemini_client
 
 APP_NAME = "claimguard"
 START_MESSAGE = types.Content(role="user", parts=[types.Part(text="Mulai investigasi kasus ini.")])
@@ -50,6 +51,7 @@ def _instruction(name: str):
 
 def build_root_agent(models: dict[str, str | BaseLlm] | None = None) -> SequentialAgent:
     """`models` untuk test: {"investigator": FakeLlm(...), ...}. Default: model Gemini dari config."""
+    gemini_client.configure_vertex_env()
     default = get_settings().gemini_model
     m = {"investigator": default, "evaluator": default, "drafter": default, **(models or {})}
     common = dict(disallow_transfer_to_parent=True, disallow_transfer_to_peers=True,
