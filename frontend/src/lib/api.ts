@@ -1,4 +1,4 @@
-import { clearSession, getToken, redirectToLogin } from "@/lib/auth";
+import { redirectToLogin } from "@/lib/auth";
 
 export type RuntimeSettings = {
   scan_interval_min: number;
@@ -115,10 +115,8 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  // Sesi sama dengan api-client: token Bearer karena cookie lintas situs bisa diblokir browser
+  // Sesi memakai cookie httpOnly first-party dari route handler Next.js.
   const headers = new Headers(init?.headers);
-  const token = getToken();
-  if (token) headers.set("Authorization", `Bearer ${token}`);
   let res: Response;
   try {
     res = await fetch(`${API_BASE_URL}/api/v1${path}`, {
@@ -130,7 +128,6 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(0, "network_error", "Tidak dapat terhubung ke server.");
   }
   if (res.status === 401 && path !== "/auth/login") {
-    clearSession();
     redirectToLogin();
   }
   if (!res.ok) {

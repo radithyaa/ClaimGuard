@@ -1,21 +1,13 @@
 "use client";
 
-import { useEffect } from "react";
-
-import { hasSession, redirectToLogin } from "@/lib/auth";
-
 /**
  * Lapisan kedua penjaga rute. Pengecekan utama ada di server (`app/(dashboard)/layout.tsx`),
- * yang sudah menolak pengguna tanpa sesi sebelum HTML dikirim.
+ * yang menolak pengguna tanpa sesi sebelum HTML dikirim.
  *
- * Komponen ini menangani kasus sesi HABIS saat tab dibiarkan terbuka lama: token di browser
- * kedaluwarsa sehingga aksi tulis akan gagal 401. Konten tidak disembunyikan, agar tidak ada
- * kedipan saat pindah halaman.
+ * Sesi kini berupa cookie httpOnly first-party yang tidak dapat dibaca JavaScript, sehingga
+ * komponen ini tidak lagi memeriksa token sendiri. Bila sesi kedaluwarsa, backend membalas
+ * 401 pada aksi tulis dan `api-client` mengarahkan pengguna ke halaman login.
  */
 export function AuthGuard({ children }: { children: React.ReactNode }) {
-  useEffect(() => {
-    if (!hasSession()) redirectToLogin();
-  }, []);
-
   return <>{children}</>;
 }

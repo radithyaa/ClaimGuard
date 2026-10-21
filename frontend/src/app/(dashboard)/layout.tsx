@@ -24,8 +24,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const session = await getServerSession();
 
   if (!session.authenticated) {
+    console.warn("[auth] layout.redirect_login", { unreachable: session.unreachable });
     redirect("/login");
   }
+
+  console.info("[auth] layout.allow", { user: session.user });
 
   return (
     <AuthGuard>

@@ -23,6 +23,9 @@ export type ServerSession = {
 
 const BASE_URL = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000").replace(/\/$/, "");
 
+/** Awalan konsisten agar seluruh jejak sesi mudah disaring di Cloud Logging/terminal. */
+const tag = (phase: string) => `[auth] ${phase}`;
+
 export async function getServerSession(): Promise<ServerSession> {
   const jar = await cookies();
   const token = jar.get("cg_session")?.value;
@@ -33,6 +36,11 @@ export async function getServerSession(): Promise<ServerSession> {
   // Cadangan bila cookie tidak terkirim ke fetch server-to-server.
   if (token) headers.authorization = `Bearer ${token}`;
 
+  console.info(tag("session.check"), {
+    hasCookie: Boolean(token),
+    cookieNames: jar.getAll().map((c) => c.name),
+  });
+
   try {
     const res = await fetch(`${BASE_URL}/api/v1/auth/session`, {
       headers,
@@ -41,16 +49,22 @@ export async function getServerSession(): Promise<ServerSession> {
       signal: AbortSignal.timeout(4000),
     });
     if (!res.ok) {
+      console.warn(tag("session.check.non_ok"), { status: res.status });
       return { authenticated: false, user: null, authRequired: true, unreachable: false };
     }
     const body = (await res.json()) as { authenticated: boolean; user: string | null; auth_required: boolean };
+    console.info(tag("session.check.result"), {
+      authenticated: body.authenticated,
+      user: body.user,
+    });
     return {
       authenticated: body.authenticated,
       user: body.user,
       authRequired: body.auth_required,
       unreachable: false,
     };
-  } catch {
+  } catch (err) {
+    console.error(tag("session.check.failed"), { error: String(err) });
     return { authenticated: false, user: null, authRequired: true, unreachable: true };
   }
 }

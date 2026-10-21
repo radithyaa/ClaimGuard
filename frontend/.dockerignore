@@ -13,3 +13,5 @@ next-env.d.ts
 npm-debug.log*
 Dockerfile
 .dockerignore
+# Skrip diagnostik (trace login) tidak dipakai runtime.
+scripts

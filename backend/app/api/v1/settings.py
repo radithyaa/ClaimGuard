@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Request, Response
 
 from app.api.deps import DB, User
@@ -19,6 +21,7 @@ from app.services.settings_service import (
 )
 
 router = APIRouter(responses=ERROR_RESPONSES)
+log = logging.getLogger(__name__)
 
 
 @router.get("/settings", response_model=RuntimeSettings, tags=["settings"])
@@ -58,8 +61,9 @@ def put_courier_thresholds(body: list[CourierThresholdIn], db: DB,
 
 
 @router.post("/auth/login", response_model=LoginOut, tags=["auth"])
-def login(body: LoginIn, response: Response) -> LoginOut:
+def login(body: LoginIn, response: Response, request: Request) -> LoginOut:
     if not check_password(body.password):
+        log.warning("auth.login.rejected", extra={"reason": "bad_password"})
         raise AppError(401, "invalid_credentials", "Password salah")
     token, ttl = create_token()
     cloud = get_settings().env == "cloud"
@@ -67,6 +71,12 @@ def login(body: LoginIn, response: Response) -> LoginOut:
     # Frontend juga boleh memakai token sebagai header Authorization: Bearer.
     response.set_cookie(COOKIE_NAME, token, max_age=ttl, httponly=True, secure=cloud,
                         samesite="none" if cloud else "lax")
+    log.info("auth.login.ok", extra={
+        "origin": request.headers.get("origin"),
+        "cookie_samesite": "none" if cloud else "lax",
+        "cookie_secure": cloud,
+        "ttl_sec": ttl,
+    })
     return LoginOut(token=token, expires_in=ttl)
 
 
@@ -82,7 +92,14 @@ def read_session(request: Request) -> SessionOut:
         return SessionOut(authenticated=True, user=DEMO_USER, auth_required=False)
     header = request.headers.get("authorization", "")
     bearer = header.removeprefix("Bearer ").strip() if header.startswith("Bearer ") else None
-    user = verify_token(bearer or request.cookies.get(COOKIE_NAME))
+    cookie_token = request.cookies.get(COOKIE_NAME)
+    user = verify_token(bearer or cookie_token)
+    # Log sumber kredensial: membedakan "cookie tidak terkirim" dari "token tidak valid".
+    log.info("auth.session.checked", extra={
+        "authenticated": user is not None,
+        "via": "bearer" if bearer else ("cookie" if cookie_token else "none"),
+        "origin": request.headers.get("origin"),
+    })
     return SessionOut(authenticated=user is not None, user=user, auth_required=True)
 
 
@@ -92,3 +109,4 @@ def logout(response: Response) -> None:
     cloud = get_settings().env == "cloud"
     response.delete_cookie(COOKIE_NAME, secure=cloud, samesite="none" if cloud else "lax",
                            httponly=True)
+    log.info("auth.logout.ok")

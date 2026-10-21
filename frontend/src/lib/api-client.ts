@@ -1,4 +1,4 @@
-import { clearSession, getToken, redirectToLogin } from "@/lib/auth";
+import { redirectToLogin } from "@/lib/auth";
 import type {
   AppSettings,
   AuditLog,
@@ -47,8 +47,7 @@ function toQuery(params?: Query): string {
 function authHeaders(json: boolean): HeadersInit {
   const h: Record<string, string> = {};
   if (json) h["Content-Type"] = "application/json";
-  const token = getToken();
-  if (token) h.Authorization = `Bearer ${token}`;
+  // Sesi memakai cookie httpOnly first-party; tidak ada header Authorization.
   return h;
 }
 
@@ -72,7 +71,6 @@ async function request<T>(method: string, path: string, opts: { query?: Query; b
   // `/auth/session` juga dikecualikan: 401 di sana hanya berarti "belum masuk", dan
   // halaman login memanggilnya sebelum pengguna punya sesi.
   if (res.status === 401 && path !== "/auth/login" && path !== "/auth/session") {
-    clearSession();
     redirectToLogin();
   }
   if (!res.ok) {
@@ -103,7 +101,14 @@ export type SessionStatus = { authenticated: boolean; user: string | null; auth_
 
 export const api = {
   auth: {
-    login: (password: string) => request<{ token: string; expires_in: number }>("POST", "/auth/login", { body: { password } }),
+    /**
+     * Login lewat route handler Next.js (`/api/auth/login`), BUKAN langsung ke backend.
+     * Route itu menyimpan cookie sesi di domain web sehingga guard server bisa membacanya.
+     * Memanggil backend langsung membuat cookie menempel di domain API dan guard selalu
+     * melihat "belum login" -> pengguna terpental balik ke halaman login.
+     */
+    login: (password: string) =>
+      request<{ ok: boolean; expires_in: number }>("POST", "/auth/login", { body: { password } }),
     /** Status sesi dari cookie httpOnly; token tidak ikut dikirim balik. */
     session: () => request<SessionStatus>("GET", "/auth/session"),
     logout: () => request<void>("POST", "/auth/logout"),
@@ -123,7 +128,9 @@ export const api = {
     buyerRequest: (id: string) => request<BuyerRequest>("GET", `/investigations/${id}/buyer-request`),
     markBuyerRequestSent: (id: string, message: string) =>
       request<{ status: string }>("POST", `/investigations/${id}/buyer-request`, { body: { message } }),
-    streamUrl: (id: string) => `${API_PREFIX}/investigations/${id}/stream`,
+    // Lewat proxy Next.js agar cookie sesi first-party ikut terkirim (EventSource tak bisa
+    // mengirim header; cookie domain API tidak terbaca dari domain web).
+    streamUrl: (id: string) => `/api/stream/${id}`,
   },
   demo: {
     reset: () => request<{ shipments: number; media: number; missing_media: string[] }>("POST", "/demo/reset"),

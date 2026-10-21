@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api, ApiError } from "@/lib/api-client";
-import { safeNext, saveSession } from "@/lib/auth";
+import { safeNext } from "@/lib/auth";
 
 /**
  * Login satu akun demo (FR-19). Sistem belum punya tabel pengguna, sehingga email hanya
@@ -30,18 +30,31 @@ export function LoginForm() {
   const [error, setError] = useState<string | null>(null);
   const [forgot, setForgot] = useState(false);
   const [emailNotice, setEmailNotice] = useState<string | null>(null);
+
+  /**
+   * Kredensial tombol demo, di-inline saat build lewat `NEXT_PUBLIC_DEMO_PASSWORD`.
+   * Bila kosong, tombol disembunyikan daripada menebak kata sandi.
+   */
+  const demoPassword = process.env.NEXT_PUBLIC_DEMO_PASSWORD;
+  const canDemo = !process.env.NEXT_PUBLIC_HIDE_DEMO_LOGIN && Boolean(demoPassword);
+
   async function signIn(passwordValue: string, mode: "form" | "demo") {
     setPending(mode);
     setError(null);
     try {
-      const { token, expires_in } = await api.auth.login(passwordValue);
-      saveSession(token, expires_in, remember);
-      // URUTAN PENTING: refresh() dulu agar server component membaca ulang cookie sesi,
-      // baru pindah halaman. Bila `replace` lebih dulu, Next.js dapat memakai hasil RSC
-      // lama (masih "belum login") dan layout mengalihkan balik ke /login.
-      router.refresh();
+      console.info("[auth] client.login.start", { mode, next });
+      // Login lewat route handler Next.js: cookie httpOnly diset di domain WEB, sehingga
+      // guard server (layout) dan SSE melihat sesi yang sama. Tidak ada token di JavaScript.
+      await api.auth.login(passwordValue);
+      console.info("[auth] client.login.ok");
       router.replace(next);
+      router.refresh();
+      console.info("[auth] client.navigate", { to: next });
     } catch (err) {
+      console.error("[auth] client.login.error", {
+        status: err instanceof ApiError ? err.status : null,
+        code: err instanceof ApiError ? err.code : null,
+      });
       setError(
         err instanceof ApiError && err.status === 401
           ? "Kata sandi salah. Coba lagi."
@@ -53,18 +66,25 @@ export function LoginForm() {
     }
   }
 
+  /**
+   * Tombol juri: MENGISI kedua field dengan kredensial akun utama lalu mengirim formulir.
+   * Juri melihat email dan kata sandi yang dipakai — bukan login "ajaib" di latar belakang —
+   * dan jalurnya sama persis dengan login manual (`onSubmit`), tanpa jalur istimewa.
+   */
+  function fillDemoAndSubmit() {
+    if (!demoPassword) return;
+    setEmail(ADMIN_EMAIL);
+    setEmailNotice(null);
+    setPassword(demoPassword);
+    setError(null);
+    void signIn(demoPassword, "demo");
+  }
+
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!password) return setError("Masukkan kata sandi tim.");
     void signIn(password, "form");
   }
-
-  /**
-   * Tombol juri: backend memakai satu kata sandi demo. Nilainya diisi lewat env publik
-   * `NEXT_PUBLIC_DEMO_PASSWORD`; bila tidak diisi, tombol disembunyikan daripada menebak.
-   */
-  const demoPassword = process.env.NEXT_PUBLIC_DEMO_PASSWORD;
-  const canDemo = !process.env.NEXT_PUBLIC_HIDE_DEMO_LOGIN && Boolean(demoPassword);
 
   return (
     <>
@@ -184,12 +204,12 @@ export function LoginForm() {
             <Button
               type="button"
               variant="outline"
-              onClick={() => void signIn(demoPassword!, "demo")}
+              onClick={fillDemoAndSubmit}
               disabled={pending !== null}
               className="h-11 w-full rounded-lg border-[#d5dce3] bg-white text-sm font-semibold text-[#1e2a36]"
             >
               <Play className="size-3.5" aria-hidden />
-              {pending === "demo" ? "Menyiapkan demo…" : "Coba sebagai juri (tanpa mengetik)"}
+              {pending === "demo" ? "Masuk sebagai juri…" : "Isi akun demo & masuk"}
             </Button>
           )}
 

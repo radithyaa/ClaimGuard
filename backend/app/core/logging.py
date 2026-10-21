@@ -15,12 +15,26 @@ investigation_id_var: ContextVar[str | None] = ContextVar("investigation_id", de
 
 
 class JsonFormatter(logging.Formatter):
+    """Log JSON satu baris. Field tambahan dari `extra={...}` ikut disertakan."""
+
+    # Field bawaan LogRecord yang tidak perlu diduplikasi ke keluaran.
+    _RESERVED = frozenset(
+        {
+            "name", "msg", "args", "levelname", "levelno", "pathname", "filename",
+            "module", "exc_info", "exc_text", "stack_info", "lineno", "funcName",
+            "created", "msecs", "relativeCreated", "thread", "threadName",
+            "processName", "process", "taskName", "message", "asctime",
+        }
+    )
+
     def format(self, record: logging.LogRecord) -> str:
+        # getMessage() harus dipanggil lebih dulu: ia mengisi / menghapus record.message.
+        message = record.getMessage()
         entry = {
             "time": datetime.fromtimestamp(record.created, UTC).isoformat(),
             "severity": record.levelname,  # nama field yang dikenali Cloud Logging
             "logger": record.name,
-            "message": record.getMessage(),
+            "message": message,
         }
         if rid := request_id_var.get():
             entry["request_id"] = rid
@@ -28,7 +42,12 @@ class JsonFormatter(logging.Formatter):
             entry["investigation_id"] = iid
         if record.exc_info:
             entry["exception"] = self.formatException(record.exc_info)
-        return json.dumps(entry, ensure_ascii=False)
+        # Field diagnostik dari `extra={...}` ikut dicatat (dipakai log fase auth).
+        for key, value in record.__dict__.items():
+            if key in self._RESERVED or key.startswith("_"):
+                continue
+            entry[key] = value
+        return json.dumps(entry, ensure_ascii=False, default=str)
 
 
 def setup_logging(level: str = "INFO") -> None:

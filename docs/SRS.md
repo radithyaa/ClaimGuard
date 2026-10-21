@@ -294,7 +294,7 @@ Prefix `/api/v1`. Semua respons JSON kecuali SSE. Skema divalidasi Pydantic. Sel
 
 **Autentikasi per endpoint.** Bila `AUTH_REQUIRED=true`: seluruh endpoint **baca (GET)** tetap publik agar dashboard dapat dibuka penilai, sedangkan **endpoint tulis dan pemicu AI** (`POST`, `PATCH`, `PUT`, `DELETE`, kecuali `/auth/login`, `/auth/session`, `/auth/logout`, dan `/health`) memerlukan token `Authorization: Bearer` atau cookie sesi dan mengembalikan 401 tanpa keduanya. Ini keputusan sadar untuk demo: menutup penyalahgunaan kuota Vertex tanpa memaksa login berlapis. **Rate limiting belum ada** — tercatat sebagai celah di bagian 19.
 
-**Sesi di sisi klien.** Cookie `cg_session` adalah sumber kebenaran. Frontend memakai token di storage browser **hanya sebagai cadangan**, karena di Cloud Run frontend dan backend berada di domain berbeda dan cookie lintas situs dapat diblokir; SSE (`EventSource`) tidak dapat mengirim header, sehingga alur SSE tetap bergantung pada cookie dengan `withCredentials`. Penjaga rute `app/(dashboard)/layout.tsx` memanggil `GET /auth/session` **di server** sehingga HTML tidak pernah terkirim ke pengguna tanpa sesi.
+**Sesi di sisi klien.** Sesi **first-party**: cookie httpOnly `cg_session` diset oleh route handler Next.js (`/api/auth/login`), bukan oleh backend, lalu diteruskan ke backend. Guard di `app/(dashboard)/layout.tsx` dan proxy SSE membaca cookie yang sama. Tidak ada token di `localStorage`. Alternatif `Authorization: Bearer` tetap sah di backend (dipakai oleh pengujian dan alat CLI), tetapi bukan jalur utama browser.
 
 **Format event SSE:** `id: <seq>`, `event: <type>`, `data: {"investigation_id", "agent", "ts", "payload", "source"}`.
 
@@ -952,6 +952,10 @@ Prioritaskan semua kebutuhan **Must**. Skenario B dan C dikerjakan hanya bila sk
 1. **`CORS_ORIGINS` membuat container gagal start.** `cors_origins` bertipe `list[str]`, dan pydantic-settings mem-parsing env sebagai JSON; skrip mengirim URL mentah → `SettingsError`. Artinya deploy dengan CORS **selalu** gagal dan CORS tidak pernah aktif. Kini `deploy-api.sh` mengubah daftar koma menjadi JSON array.
 2. **Juri terlempar balik ke `/login` setelah berhasil masuk.** Layout memakai hasil render/RSC yang masih "belum login" karena `router.replace()` berjalan sebelum `router.refresh()`. Diperbaiki dengan urutan `refresh()` → `replace()`, `export const dynamic = "force-dynamic"`, dan Bearer cadangan di `getServerSession()`.
 3. **Verifikasi bundle `deploy-web.sh` memberi "GAGAL" palsu.** Skrip memindai `/settings`, yang kini 307 ke `/login` dan tidak memuat chunk aplikasi. Diperbaiki dengan memindai `/login`.
+4. **Login berhasil tetapi pengguna terpental balik ke `/login` (akar masalah sebenarnya).** Cookie `cg_session` diset oleh **domain API**, sedangkan guard server berjalan di **domain web**. `cookies()` di Server Component hanya membaca cookie milik host web, sehingga guard selalu melihat "belum login". Token di `localStorage` tidak menolong karena tidak dikirim ke web.
+   **Perbaikan:** sesi kini **first-party**. Route handler `app/api/auth/login` meneruskan kredensial ke API lalu menyetel cookie httpOnly di domain web; `app/api/auth/logout` menghapusnya. Tidak ada lagi token di storage browser.
+5. **SSE 401 setelah sesi first-party.** `EventSource` memanggil domain API yang tidak lagi memegang cookie sesi. Ditambahkan proxy `app/api/stream/[id]` yang meneruskan cookie web ke API tanpa buffering (termasuk `Last-Event-ID`).
+6. **Celah: `GET /investigations/{id}/stream` terbuka tanpa login.** Endpoint tidak memakai dependency `User`, padahal stream memuat isi investigasi. Kini wajib sesi (NFR-06), dengan test regresi.
 
 **Versi 2.4 (22 Oktober 2026) — sinkronisasi dokumen dengan kode**
 

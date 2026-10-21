@@ -158,12 +158,24 @@ printf 'postgresql+psycopg://claimguard:%s@/claimguard?host=/cloudsql/hackathon-
 unset PW
 ```
 
-### 5.2 Deploy
+### 5.2 Deploy API
 
 ```bash
+cd <root repo>
 export PROJECT_ID=hackathon-primestep-18
-./infra/deploy-api.sh --dry-run     # lihat perintahnya dulu
-./infra/deploy-api.sh               # deploy
+# Origin frontend WAJIB disertakan, formatnya daftar dipisah koma (script mengubahnya ke JSON).
+export CORS_ORIGINS=https://claimguard-web-5rzsoa7j3a-et.a.run.app
+
+./infra/deploy-api.sh --dry-run     # cetak perintah + env vars tanpa eksekusi
+./infra/deploy-api.sh               # build via Cloud Build, deploy, lalu cek /health
+```
+
+Keluaran yang benar diakhiri:
+
+```
+Service [claimguard-api] revision [claimguard-api-00007-4rt] has been deployed and is serving 100 percent of traffic.
+==> Health: https://claimguard-api-5rzsoa7j3a-et.a.run.app/api/v1/health
+{"status":"ok","db":"ok","ai_mode":"auto","storage":"gcs"}
 ```
 
 Flag yang dipakai dan alasannya:
@@ -177,22 +189,26 @@ Flag yang dipakai dan alasannya:
 | `--memory 2Gi` | FFmpeg encode ulang + Gemini multimodal |
 | `--allow-unauthenticated` | demo publik; API tetap punya login demo (FR-19) |
 
-`--source` memakai Cloud Build, jadi tidak butuh Docker lokal.
+`--source` memakai Cloud Build, jadi tidak butuh Docker lokal. Waktu build ±5–8 menit.
 
 ### 5.3 Deploy frontend (claimguard-web)
 
 ```bash
-export API_URL=https://claimguard-api-259363364922.asia-southeast2.run.app
+export API_URL=https://claimguard-api-5rzsoa7j3a-et.a.run.app
+export DEMO_PASSWORD="$(gcloud secrets versions access latest --secret=claimguard-demo-password --project="$PROJECT_ID")"
+
 ./infra/deploy-web.sh --dry-run
 ./infra/deploy-web.sh
 ```
 
-**`NEXT_PUBLIC_API_BASE_URL` wajib lewat `--build-arg`, bukan `--set-env-vars`.** Next.js meng-inline nilai `NEXT_PUBLIC_*` ke bundle saat `next build`. Memberikannya sebagai env runtime **tidak berpengaruh sama sekali** — hasilnya frontend akan memanggil `http://localhost:8000`. `deploy-web.sh` sudah menangani ini.
+`DEMO_PASSWORD` mengaktifkan tombol **"Coba sebagai juri"** di halaman login. Bila variabel ini kosong, tombol disembunyikan dan juri harus mengetik kata sandi.
 
-Setelah web punya URL, **backend harus diberi CORS origin web** (NFR-06):
+**`NEXT_PUBLIC_*` wajib lewat `--build-arg`, bukan `--set-env-vars`.** Next.js meng-inline nilai `NEXT_PUBLIC_*` ke bundle saat `next build`. Memberikannya sebagai env runtime **tidak berpengaruh sama sekali** — hasilnya frontend akan memanggil `http://localhost:8000`. `deploy-web.sh` sudah menangani ini.
+
+Bila `CORS_ORIGINS` belum diisi saat deploy API, jalankan ulang tanpa build (±2 menit):
 
 ```bash
-CORS_ORIGINS='["https://claimguard-web-xxxx.a.run.app"]' ./infra/deploy-api.sh --image
+CORS_ORIGINS=https://claimguard-web-5rzsoa7j3a-et.a.run.app ./infra/deploy-api.sh --image
 ```
 
 ### 5.4 Dua mode deploy: kapan pakai yang mana
@@ -206,18 +222,81 @@ CORS_ORIGINS='["https://claimguard-web-xxxx.a.run.app"]' ./infra/deploy-api.sh -
 
 ### 5.5 Kegagalan umum dan artinya
 
-| Pesan | Penyebab sebenarnya |
-| --- | --- |
-| `could not find source [backend]` | perintah dijalankan dari `frontend/`; path `--source` relatif ke CWD |
-| `Aborted by user` walau tidak ada interaksi | `--quiet` menjawab "N" pada prompt aktivasi API |
-| `failed to update builder last activity` / `no space left on device` | disk lokal penuh; `docker builder prune -af` |
-| revisi `failed to start and listen on PORT` | container crash; baca `gcloud run services logs read` |
-| `Connection refused` di `/cloudsql/...` | SA runtime belum punya `roles/cloudsql.client` |
-| Gemini 403 saat investigasi | SA runtime belum punya `roles/aiplatform.user` |
+Semua baris di bawah adalah **kegagalan nyata yang pernah terjadi** saat mengerjakan repo ini, bukan tebakan.
+
+| Pesan / gejala | Penyebab sebenarnya | Perbaikan |
+| --- | --- | --- |
+| `could not find source [backend]` | perintah dijalankan dari `frontend/`; path `--source` relatif ke CWD | jalankan dari root repo |
+| `Aborted by user` walau tidak ada interaksi | `--quiet` menjawab "N" pada prompt aktivasi API | `gcloud services enable <api>` lebih dulu |
+| `failed to update builder last activity` / `no space left on device` | disk lokal penuh | `docker builder prune -af` |
+| revisi **`failed to start and listen on PORT=8080`** | container crash sebelum listen | baca log: `gcloud run services logs read claimguard-api --region asia-southeast2 --limit 50` |
+| Log: `SettingsError: error parsing value for field "cors_origins"` + `JSONDecodeError` | `cors_origins` bertipe `list[str]`; pydantic-settings mem-parsing env sebagai **JSON**, sedangkan nilai dikirim sebagai URL mentah | gunakan `deploy-api.sh` versi terbaru (mengubah daftar koma → JSON array), atau kirim `CORS_ORIGINS='["https://..."]'` |
+| `Connection refused` di `/cloudsql/...` | SA runtime belum punya `roles/cloudsql.client` | §3 |
+| Gemini 403 saat investigasi | SA runtime belum punya `roles/aiplatform.user` | §3 |
+| `deploy-web.sh` mencetak `GAGAL: API URL tidak ditemukan di bundle` tetapi situs **berjalan normal** | skrip lama memindai `/settings`, yang sekarang 307 → `/login` dan tidak memuat chunk aplikasi | gunakan skrip terbaru (memindai `/login`); verifikasi manual ada di §5.7 |
+| **Juri berhasil login tetapi terlempar kembali ke `/login`** | layout `(dashboard)` memakai hasil render/RSC lama (“belum login”) karena `router.replace()` berjalan sebelum `router.refresh()`; halaman juga belum `force-dynamic` | sudah diperbaiki di kode; lihat SRS §18 v2.5 |
 
 ### 5.6 Status prasyarat
 
-`deploy-api.sh` akan memperingatkan bila `backend/app/main.py` belum ada (milik Backend B). Tanpa file itu, container gagal start karena entrypoint menjalankan `app.main:app`. Urutan yang benar: Backend B membuat `main.py` → deploy API → Frontend A deploy web.
+`deploy-api.sh` akan memperingatkan bila `backend/app/main.py` belum ada. Tanpa file itu, container gagal start karena entrypoint menjalankan `app.main:app`. Urutan yang benar: API → web → **set CORS API ke origin web** → uji login.
+
+### 5.7 Verifikasi setelah deploy (wajib)
+
+Jangan menilai keberhasilan deploy dari pesan `Done.` saja. Jalankan pemeriksaan ini:
+
+```bash
+API=https://claimguard-api-5rzsoa7j3a-et.a.run.app
+WEB=https://claimguard-web-5rzsoa7j3a-et.a.run.app
+
+# 1. Kesehatan API
+curl -s "$API/api/v1/health"
+#    harap: {"status":"ok","db":"ok","ai_mode":"auto","storage":"gcs"}
+
+# 2. CORS untuk origin web (harus memantulkan origin, bukan "*")
+curl -s -o /dev/null -D - -X OPTIONS "$API/api/v1/investigations" \
+  -H "Origin: $WEB" -H 'Access-Control-Request-Method: POST' \
+  | grep -i access-control-allow-origin
+
+# 3. Sesi: anonim ditolak, dengan cookie diterima
+curl -s "$API/api/v1/auth/session"          # authenticated:false
+TOKEN=$(curl -s -X POST "$API/api/v1/auth/login" -H 'Content-Type: application/json' \
+  -d "{\"password\":\"$(gcloud secrets versions access latest --secret=claimguard-demo-password --project="$PROJECT_ID")\"}" \
+  | sed 's/.*"token":"\([^"]*\)".*/\1/')
+curl -s -H "Cookie: cg_session=$TOKEN" "$API/api/v1/auth/session"   # authenticated:true
+
+# 4. Penjaga rute di server (ini yang paling penting)
+curl -s -o /dev/null -w 'tanpa sesi : %{http_code}\n' "$WEB/dashboard"                          # 307
+curl -s -o /dev/null -w 'dengan sesi: %{http_code}\n' -H "Cookie: cg_session=$TOKEN" "$WEB/dashboard"   # 200
+
+# 5. Aksi tulis tanpa login harus 401
+curl -s -o /dev/null -w 'scan tanpa login: %{http_code}\n' -X POST "$API/api/v1/monitoring/scan"   # 401
+```
+
+**Verifikasi bundle tanpa skrip** (bila ingin memastikan `NEXT_PUBLIC_API_BASE_URL` benar-benar ter-inline):
+
+```bash
+curl -s "$WEB/login" | grep -oE '/_next/static/[^"\\]+\.js' | sort -u \
+  | while read -r c; do curl -s "$WEB$c" 2>/dev/null; done \
+  | grep -c "claimguard-api"        # harus > 0
+```
+
+Pindai **`/login`**, bukan `/settings`: halaman dashboard mengembalikan 307 dan HTML-nya tidak memuat chunk aplikasi.
+
+### 5.8 Kredensial demo
+
+Satu akun untuk admin dan juri (FR-19):
+
+| Untuk | Email (label) | Kata sandi |
+| --- | --- | --- |
+| Admin / juri | `admin@claimguard.demo` | secret `claimguard-demo-password` |
+
+Email hanya label tampilan; backend memverifikasi kata sandi saja. Untuk demo, arahkan juri ke tombol **"Coba sebagai juri"** agar tidak perlu mengetik. Mengganti kata sandi:
+
+```bash
+printf 'kata-sandi-baru' | gcloud secrets versions add claimguard-demo-password --data-file=-
+./infra/deploy-api.sh --image                       # API memakai secret terbaru
+DEMO_PASSWORD=kata-sandi-baru ./infra/deploy-web.sh # tombol juri ikut berubah (perlu build ulang)
+```
 
 ---
 

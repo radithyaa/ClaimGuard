@@ -245,6 +245,20 @@ async def test_reject_requires_reason_and_blocks_approve(client, db, monkeypatch
     assert (await client.post(f"/claims/{claim_id}/approve")).status_code == 409
 
 
+async def test_stream_requires_login(client, monkeypatch):
+    """SSE memuat isi investigasi; tanpa sesi harus 401 (NFR-06)."""
+    monkeypatch.setattr(get_settings(), "auth_required", True)
+    anon = await client.get("/investigations/whatever/stream")
+    assert anon.status_code == 401
+
+    token = (await client.post("/auth/login", json={"password": get_settings().demo_password})).json()["token"]
+    # Dengan sesi: lolos auth, lalu 404 karena investigasinya memang tidak ada
+    ok = await client.get(
+        "/investigations/whatever/stream", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert ok.status_code == 404
+
+
 async def test_auth_session_and_logout(client, monkeypatch):
     """Sesi dicek di server lewat cookie httpOnly; token tidak pernah dikirim ke penjaga rute."""
     # Tanpa AUTH_REQUIRED: semua dianggap sesi demo yang sah

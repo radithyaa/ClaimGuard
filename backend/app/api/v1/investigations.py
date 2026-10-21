@@ -118,9 +118,17 @@ async def _event_stream(inv_id: str, after_seq: int) -> AsyncIterator[str]:
 def stream_investigation(
     investigation_id: str,
     db: DB,
+    user: User,
     last_event_id: str | None = Header(default=None),
     after: int = Query(default=0, ge=0, description="Alternatif Last-Event-ID"),
 ) -> StreamingResponse:
+    """Stream SSE trace agen.
+
+    `User` wajib: stream memuat isi investigasi (nama agen, argumen tool, temuan) dan
+    sebelumnya terbuka tanpa login — tidak konsisten dengan kebijakan "endpoint pemicu AI
+    membutuhkan login" (NFR-06). EventSource tidak bisa mengirim header, jadi browser
+    memakai cookie sesi lewat proxy `/api/stream/{id}` di frontend.
+    """
     if inv_repo.get(db, investigation_id) is None:
         raise not_found("Investigasi")
     after_seq = int(last_event_id) if last_event_id and last_event_id.isdigit() else after

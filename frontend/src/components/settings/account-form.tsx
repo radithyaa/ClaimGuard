@@ -10,25 +10,38 @@ import { Icon } from "@/components/ui/icon";
 import { SimulatedBadge } from "@/components/ui/simulated-badge";
 import { useLogout } from "@/hooks/use-logout";
 import { api, USE_MOCK } from "@/lib/api-client";
-import { sessionInfo } from "@/lib/auth";
-import { formatDateTime } from "@/lib/format";
 
 type Health = { status: string; db: string; ai_mode: string; storage: string };
 
 /**
  * Halaman Akun (FR-19). Sistem demo memakai SATU kata sandi tim, sehingga tidak ada
  * profil per pengguna, ubah kata sandi, atau pemisahan peran. Halaman ini menampilkan
- * status sesi yang sebenarnya (dari token tersimpan) dan status layanan dari `/health`,
- * bukan data palsu.
+ * status sesi yang sebenarnya dan status layanan dari `/health`, bukan data palsu.
+ *
+ * Sesi berupa cookie httpOnly sehingga tidak dapat dibaca JavaScript; statusnya diambil
+ * dari `GET /auth/session` (backend memvalidasi tanda tangan token).
  */
 export function AccountForm() {
   const logout = useLogout();
   const [health, setHealth] = useState<Health | null>(null);
   const [status, setStatus] = useState<SaveStatus>({ kind: "idle" });
   const [confirmLogout, setConfirmLogout] = useState(false);
+  const [session, setSession] = useState<{ authenticated: boolean } | null>(null);
 
-  // Dibaca di klien: token berada di localStorage/sessionStorage, bukan di server.
-  const session = sessionInfo();
+  useEffect(() => {
+    let cancelled = false;
+    api.auth
+      .session()
+      .then((s) => {
+        if (!cancelled) setSession({ authenticated: s.authenticated });
+      })
+      .catch(() => {
+        if (!cancelled) setSession({ authenticated: false });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (USE_MOCK) {
@@ -125,41 +138,40 @@ export function AccountForm() {
                 <div>
                   <p className="field-label">Status sesi</p>
                   <p className="mt-1 text-[13px] leading-[21px] text-ink-muted">
-                    {session
-                      ? session.remember
-                        ? "Aktif — tersimpan di perangkat ini (bertahan setelah browser ditutup)."
-                        : "Aktif — hanya untuk tab ini; sesi berakhir saat tab ditutup."
-                      : "Sesi tidak ditemukan di browser ini. Anda tetap dapat membaca data, tetapi aksi tulis akan meminta login."}
+                    {session === null
+                      ? "Memeriksa sesi…"
+                      : session.authenticated
+                        ? "Aktif — cookie sesi httpOnly di perangkat ini; tidak terbaca oleh JavaScript."
+                        : "Sesi tidak ditemukan. Anda tetap dapat membaca data, tetapi aksi tulis akan meminta login."}
                   </p>
                 </div>
                 <span
                   className={[
                     "shrink-0 rounded-full border px-3 py-1 text-[13px] font-medium",
-                    session
+                    session?.authenticated
                       ? "border-line bg-subtle text-ink-muted"
                       : "border-danger/30 bg-danger/5 text-danger",
                   ].join(" ")}
                 >
-                  {session ? "Masuk" : "Tidak ada sesi"}
+                  {session === null ? "—" : session.authenticated ? "Masuk" : "Tidak ada sesi"}
                 </span>
               </div>
 
-              {session && (
-                <dl className="mt-1 grid gap-x-6 gap-y-1.5 sm:grid-cols-2">
-                  <div>
-                    <dt className="eyebrow">Berakhir pada</dt>
-                    <dd className="text-[13px] leading-[21px] text-ink">
-                      {formatDateTime(session.expiresAt.toISOString())}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="eyebrow">Penyimpanan</dt>
-                    <dd className="text-[13px] leading-[21px] text-ink">
-                      {session.remember ? "Perangkat ini" : "Tab ini saja"}
-                    </dd>
-                  </div>
-                </dl>
-              )}
+              <dl className="mt-1 grid gap-x-6 gap-y-1.5 sm:grid-cols-2">
+                <div>
+                  <dt className="eyebrow">Penyimpanan</dt>
+                  <dd className="text-[13px] leading-[21px] text-ink">
+                    Cookie httpOnly (first-party)
+                  </dd>
+                </div>
+                <div>
+                  <dt className="eyebrow">Masa berlaku</dt>
+                  <dd className="text-[13px] leading-[21px] text-ink">
+                    {/* Masa berlaku ditentukan permintaan login; server yang memutuskan. */}
+                    Mengikuti pengaturan saat masuk
+                  </dd>
+                </div>
+              </dl>
             </div>
 
             <div className="flex flex-wrap items-center gap-3 pt-1">
