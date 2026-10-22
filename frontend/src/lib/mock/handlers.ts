@@ -19,12 +19,17 @@ const DAY_MS = 86400e3;
 const lastActivity = (s: ShipmentDetail) =>
   Math.max(new Date(s.sla_deadline).getTime(), ...s.tracking_events.map((e) => new Date(e.occurred_at).getTime()));
 
+/** Lama admin meninjau per status akhir (H5); disimulasikan deterministik per klaim. */
+const REVIEW_SEC: Record<string, number> = { submitted: 42, rejected: 65, pending_approval: 0 };
+
 /** Ringkasan KPI dihitung dari data, supaya angka konsisten dengan tabel & antrian. */
 function metricsSummary(): MetricsSummary {
   const dayKey = (ms: number) => new Date(ms).toISOString().slice(0, 10);
   const days = [...Array(7)].map((_, i) => dayKey(Date.now() - (6 - i) * DAY_MS));
   const active = db.shipments.filter((s) => s.active_anomaly);
   const pending = db.claims.filter((c) => c.status === "pending_approval");
+  const reviewed = db.claims.filter((c) => c.status !== "pending_approval");
+  const reviewSecs = reviewed.map((c) => REVIEW_SEC[c.status] ?? 48);
   return {
     // Anomali yang sudah diputuskan tidak lagi dihitung sebagai aktif
     active_anomalies: db.shipments.filter((s) => s.active_anomaly && !s.latest_investigation?.outcome && s.anomaly?.status !== "resolved").length,
@@ -32,6 +37,8 @@ function metricsSummary(): MetricsSummary {
     submitted_claims: db.claims.filter((c) => c.status === "submitted").length,
     estimated_value_saved: active.reduce((n, s) => n + s.item_value, 0),
     avg_processing_sec: 24.6,
+    avg_review_sec: reviewSecs.length ? Math.round(reviewSecs.reduce((n, v) => n + v, 0) / reviewSecs.length) : null,
+    reviewed_claims: reviewed.length,
     trend: days.map((date) => ({
       date,
       anomalies: active.filter((s) => dayKey(lastActivity(s)) === date).length,
@@ -132,8 +139,12 @@ export async function mockRequest<T>(method: string, path: string, { query = {},
     case "GET /metrics/summary":
       return metricsSummary() as T;
     case "GET /audit-logs": {
+      // Backend mendukung dua filter: `entity` (jenis) dan `entity_id` (daftar id, untuk log per kasus)
       const entity = q("entity");
-      const rows = db.auditLogs.filter((l) => !entity || l.entity === entity);
+      const ids = query.entity_id as string[] | undefined;
+      const rows = db.auditLogs
+        .filter((l) => !entity || l.entity === entity)
+        .filter((l) => !ids || (l.entity_id !== null && ids.includes(l.entity_id)));
       return rows.slice(0, Number(q("limit") ?? 10)) as T;
     }
     case "GET /settings":

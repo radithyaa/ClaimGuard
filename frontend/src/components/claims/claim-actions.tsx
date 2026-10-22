@@ -1,9 +1,10 @@
 "use client";
 
-import { Check, CircleCheck, Copy, Loader2, PencilLine, Send, XCircle } from "lucide-react";
+import { Check, CircleAlert, CircleCheck, CircleMinus, CircleX, Copy, Loader2, PencilLine, Send, XCircle } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { checkDoc, type DocStatus } from "@/components/claims/evidence-checklist";
 import { Button } from "@/components/ui/button";
 import { ConfidenceLabel } from "@/components/ui/confidence";
 import {
@@ -16,9 +17,17 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { COURIER_LABEL, formatDateTime, formatRupiah } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import type { ClaimDetail } from "@/types/api";
 
 const time = new Intl.DateTimeFormat("id-ID", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Jakarta" });
+
+const DOC_STYLE: Record<DocStatus, { icon: typeof Check; icon_cls: string; bg: string; sr: string }> = {
+  met: { icon: CircleCheck, icon_cls: "text-success", bg: "bg-muted", sr: "Terpenuhi" },
+  missing: { icon: CircleX, icon_cls: "text-destructive", bg: "bg-destructive/10", sr: "Belum ada" },
+  manual: { icon: CircleAlert, icon_cls: "text-warning-foreground dark:text-warning", bg: "bg-warning/10", sr: "Perlu dicek admin" },
+  na: { icon: CircleMinus, icon_cls: "text-muted-foreground", bg: "bg-muted/50", sr: "Tidak berlaku" },
+};
 
 /** Panel kanan review klaim: syarat bukti, keyakinan agen, dan aksi HITL. */
 export function ClaimActions({
@@ -42,6 +51,9 @@ export function ClaimActions({
   const courier = COURIER_LABEL[c.courier] ?? c.courier;
   const docs = c.courier_policy?.required_docs ?? [];
   const pending = c.status === "pending_approval";
+  const checks = docs.map((doc) => ({ doc, ...checkDoc(doc, c.evidence, c.case_type) }));
+  const applicable = checks.filter((x) => x.status !== "na").length;
+  const met = checks.filter((x) => x.status === "met").length;
 
   if (c.status === "submitted") {
     return (
@@ -104,15 +116,25 @@ export function ClaimActions({
       <div>
         <p className="mb-3 flex justify-between text-sm">
           <span>Syarat bukti {courier}</span>
-          <span className="text-muted-foreground">{docs.length} syarat</span>
+          <span className="text-muted-foreground">{met}/{applicable} terpenuhi</span>
         </p>
         {docs.length ? (
           <ul className="flex flex-col gap-2">
-            {docs.map((d) => (
-              <li key={d} className="flex items-center gap-2 rounded-lg bg-muted px-3 py-2 text-sm">
-                <Check className="size-4 shrink-0 text-primary" aria-hidden /> {d}
-              </li>
-            ))}
+            {checks.map(({ doc, status, note }) => {
+              const s = DOC_STYLE[status];
+              return (
+                <li key={doc} className={cn("flex items-start gap-2 rounded-lg px-3 py-2 text-sm", s.bg)}>
+                  <s.icon className={cn("mt-0.5 size-4 shrink-0", s.icon_cls)} aria-hidden />
+                  <span className="flex flex-col">
+                    <span className={status === "na" ? "text-muted-foreground line-through" : undefined}>{doc}</span>
+                    <span className="text-xs text-muted-foreground">
+                      <span className="sr-only">{s.sr}: </span>
+                      {note}
+                    </span>
+                  </span>
+                </li>
+              );
+            })}
           </ul>
         ) : (
           <p className="text-sm text-muted-foreground">Aturan kurir belum tersedia.</p>

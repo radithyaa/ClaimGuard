@@ -7,6 +7,7 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
+import { CaseAuditLog } from "@/components/claims/case-audit-log";
 import { ClaimActions } from "@/components/claims/claim-actions";
 import { ClaimDeadline } from "@/components/claims/claim-deadline";
 import { EvidencePanel } from "@/components/investigation/evidence-panel";
@@ -35,7 +36,7 @@ function useReviewTimer(stopped: boolean) {
     const t = setInterval(() => setSec((s) => s + 1), 1000);
     return () => clearInterval(t);
   }, [stopped]);
-  return `${String(Math.floor(sec / 60)).padStart(2, "0")}:${String(sec % 60).padStart(2, "0")}`;
+  return { sec, label: `${String(Math.floor(sec / 60)).padStart(2, "0")}:${String(sec % 60).padStart(2, "0")}` };
 }
 
 export default function ClaimReviewPage() {
@@ -45,7 +46,7 @@ export default function ClaimReviewPage() {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const c = query.data;
-  const timer = useReviewTimer(!c || c.status !== "pending_approval");
+  const review = useReviewTimer(!c || c.status !== "pending_approval");
 
   const onSettled = (data?: ClaimDetail) => {
     if (data) qc.setQueryData(["claim", id], data);
@@ -61,12 +62,12 @@ export default function ClaimReviewPage() {
   };
 
   const approve = useMutation({
-    mutationFn: () => api.claims.approve(id),
+    mutationFn: () => api.claims.approve(id, review.sec),
     onSuccess: (d) => { onSettled(d); toast.success(`Klaim ${id.toUpperCase()} terkirim`, { description: `Berhasil diajukan ke ${COURIER_LABEL[d.courier] ?? d.courier}${d.is_simulated ? " (simulasi)" : ""}.` }); },
     onError,
   });
   const reject = useMutation({
-    mutationFn: (reason: string) => api.claims.reject(id, reason),
+    mutationFn: (reason: string) => api.claims.reject(id, reason, review.sec),
     onSuccess: (d) => { onSettled(d); toast.info("Draf klaim ditolak"); },
     onError,
   });
@@ -123,7 +124,7 @@ export default function ClaimReviewPage() {
             </span>
           )}
           <span className="flex items-center gap-1.5 rounded-lg border bg-card px-3 py-1.5 text-sm">
-          <Clock className="size-4" aria-hidden /> Waktu tinjau {timer}{pending ? "" : " (selesai)"}
+          <Clock className="size-4" aria-hidden /> Waktu tinjau {review.label}{pending ? "" : " (selesai)"}
         </span>
         </div>
       </header>
@@ -168,6 +169,7 @@ export default function ClaimReviewPage() {
             <TabsList>
               <TabsTrigger value="draft">Draf klaim</TabsTrigger>
               <TabsTrigger value="chronology">Kronologi</TabsTrigger>
+              <TabsTrigger value="audit">Log audit</TabsTrigger>
             </TabsList>
             <TabsContent value="draft">
               <section className="flex flex-col gap-4 rounded-xl border bg-card p-5">
@@ -245,6 +247,9 @@ export default function ClaimReviewPage() {
                   <p className="text-sm text-muted-foreground">Kronologi tidak tersedia.</p>
                 )}
               </section>
+            </TabsContent>
+            <TabsContent value="audit">
+              <CaseAuditLog ids={[c.id, c.investigation_id]} />
             </TabsContent>
           </Tabs>
         </div>

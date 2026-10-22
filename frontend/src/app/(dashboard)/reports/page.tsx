@@ -37,6 +37,8 @@ const STATUS = {
 export default function RecoveryReportPage() {
   // limit=100 adalah batas API; cukup untuk skala demo hackathon
   const query = useQuery({ queryKey: ["claims", "report"], queryFn: () => api.claims.list({ limit: 100 }) });
+  const metrics = useQuery({ queryKey: ["metrics"], queryFn: api.metrics.summary });
+  const reviewSec = metrics.data?.avg_review_sec;
   const all = useMemo(() => query.data?.items ?? [], [query.data]);
   const months = useMemo(() => [...new Set(all.map((c) => monthKey(c.created_at)))].sort().reverse(), [all]);
   const [month, setMonth] = useState<string>("");
@@ -145,6 +147,19 @@ export default function RecoveryReportPage() {
               <Stat label="Ditolak admin" value={r.rejected.length} sub="Tidak dikirim ke kurir" icon={Ban} tone="text-destructive" />
               <Stat label="Menunggu keputusan" value={r.pending.length} sub={`Senilai ${formatRupiah(r.pendingValue)}`} icon={Clock} tone="text-info" />
             </div>
+            {reviewSec != null && (
+              <p className="flex flex-wrap items-center justify-between gap-2 border-t px-5 py-4 text-sm">
+                <span className="flex items-center gap-2">
+                  <Clock className="size-4 text-muted-foreground" aria-hidden /> Rata-rata waktu keputusan admin
+                </span>
+                <span>
+                  <span className="font-semibold tabular-nums">
+                    {reviewSec >= 60 ? `${Math.floor(reviewSec / 60)} mnt ${Math.round(reviewSec % 60)} dtk` : `${Math.round(reviewSec)} dtk`}
+                  </span>
+                  <span className="text-muted-foreground"> · dari {metrics.data?.reviewed_claims ?? 0} keputusan, semua periode</span>
+                </span>
+              </p>
+            )}
             {r.rate !== null && (
               <div className="border-t px-5 py-4">
                 <div className="mb-2 flex justify-between text-sm">
