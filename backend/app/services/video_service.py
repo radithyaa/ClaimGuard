@@ -7,6 +7,7 @@ Proses async agar dapat dibatalkan (FR-20): CancelledError mematikan subprocess.
 import asyncio
 import re
 import shutil
+import subprocess
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -87,6 +88,26 @@ async def clip(src: str, start_sec: float, duration_sec: float, out: Path) -> Cl
 _DURATION_RE = re.compile(r"Duration: (\d+):(\d+):(\d+(?:\.\d+)?)")
 
 
+def _parse_duration(stderr: str) -> float:
+    m = _DURATION_RE.search(stderr)
+    if not m:
+        raise VideoError("durasi video tidak terbaca")
+    h, mnt, s = m.groups()
+    return int(h) * 3600 + int(mnt) * 60 + float(s)
+
+
+def probe_duration_sync(src: str | Path, timeout: float = 30.0) -> float:
+    """Durasi video untuk pemanggil sinkron (seed CLI). Memakai `ffmpeg -i`, bukan ffprobe."""
+    try:
+        proc = subprocess.run(
+            [ffmpeg_exe(), "-hide_banner", "-i", str(src)],
+            capture_output=True, check=False, timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise VideoError(f"pembacaan durasi melebihi {timeout:.0f} detik") from exc
+    return _parse_duration(proc.stderr.decode(errors="ignore"))
+
+
 async def probe_duration(src: str) -> float:
     """Durasi video (detik) dari output `ffmpeg -i` (imageio-ffmpeg tidak menyertakan ffprobe)."""
     proc = await asyncio.create_subprocess_exec(
@@ -94,8 +115,4 @@ async def probe_duration(src: str) -> float:
         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
     )
     _, stderr = await proc.communicate()
-    m = _DURATION_RE.search(stderr.decode(errors="ignore"))
-    if not m:
-        raise VideoError("durasi video tidak terbaca")
-    h, mnt, s = m.groups()
-    return int(h) * 3600 + int(mnt) * 60 + float(s)
+    return _parse_duration(stderr.decode(errors="ignore"))

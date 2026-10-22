@@ -27,6 +27,7 @@ def _safe_key(key: str) -> str:
 class Storage(Protocol):
     def put_file(self, src: Path, key: str, content_type: str = "video/mp4") -> str: ...
     def ffmpeg_input(self, uri: str) -> str: ...
+    def read_bytes(self, uri: str) -> bytes: ...
     def public_url(self, uri: str) -> str: ...
     def delete(self, uri: str) -> None: ...
 
@@ -109,6 +110,16 @@ class GCSStorage:
         return self._blob(uri).generate_signed_url(
             version="v4", expiration=self.ttl, method="GET", **kwargs
         )
+
+    def read_bytes(self, uri: str) -> bytes:
+        # Dipakai vision_tools saat URI tidak bisa dikirim sebagai gs:// kepada Gemini (mis.
+        # `local://` sisa reset dengan STORAGE_BACKEND=local yang tidak terjangkau Cloud Run).
+        from google.api_core.exceptions import GoogleAPICallError
+
+        try:
+            return self._blob(uri).download_as_bytes()
+        except (GoogleAPICallError, OSError) as exc:
+            raise StorageError(f"berkas media tidak terbaca di GCS: {exc}") from exc
 
     def delete(self, uri: str) -> None:
         self._blob(uri).delete()

@@ -30,6 +30,7 @@ class ClaimDetailOut(ClaimSummaryOut):
     draft: dict[str, Any]
     draft_issues: list[str]
     decision_reason: str | None
+    shipment_resolution: Literal["courier", "seller", "buyer"] | None = None
     item_name: str
     item_value: int
     updated_at: datetime

@@ -2,6 +2,7 @@
 
 Agen tidak pernah memanggil modul ini untuk mengirim. `submit_claim` hanya dicapai lewat
 `approve`, dengan update atomik bersyarat status sehingga klik ganda menghasilkan 409.
+`approve` juga menolak draf bila kesimpulan agen pada resi menunjuk penjual/pembeli, bukan kurir.
 """
 
 import uuid
@@ -60,6 +61,14 @@ def _resolve_anomaly(db: Session, claim: Claim) -> None:
         a.status = "resolved"
 
 
+def _clear_resolution(db: Session, claim: Claim) -> None:
+    """Penolakan admin = putusan manusia; kesimpulan agen tidak lagi mengikat resi."""
+    shipment = db.get(Shipment, claim.shipment_id)
+    if shipment is not None and shipment.resolution is not None:
+        shipment.resolution = None
+        shipment.resolution_reason = None
+
+
 def update_narrative(db: Session, claim_id: str, narrative: str, actor: str) -> Claim:
     claim = _transition(db, claim_id, narrative=narrative)
     audit.record(db, actor=actor, action="claim_edited", entity="claim", entity_id=claim.id,
@@ -72,10 +81,33 @@ def submit_claim(claim: Claim, courier: str) -> str:
     return f"SIM-{courier.upper()}-{uuid.uuid4().hex[:8].upper()}"
 
 
+def _ensure_no_other_party(db: Session, claim: Claim) -> None:
+    """Kesimpulan agen dapat menahan pengajuan klaim.
+
+    Bila investigasi terakhir resi ini menyimpulkan kesalahan ada di penjual/pembeli, draf tidak
+    layak dikirim ke kurir. Admin yang yakin tetap bisa memutuskan dengan menolak draf lebih dulu
+    (alasan penolakan = keputusan manusia yang tercatat); menolak mencabut kesimpulan itu.
+    """
+    inv = db.get(Investigation, claim.investigation_id)
+    shipment = db.get(Shipment, claim.shipment_id)
+    if (inv is None or shipment is None or inv.status != "completed"
+            or shipment.resolution not in ("seller", "buyer")):
+        return
+    party = "penjual" if shipment.resolution == "seller" else "pembeli"
+    raise conflict(
+        "resolution_blocks_claim",
+        f"Investigasi menyimpulkan kesalahan ada di pihak {party}, bukan kurir. Tolak draf ini "
+        "dan tangani langsung dengan pihak tersebut",
+    )
+
+
 def approve(db: Session, claim_id: str, actor: str, review_sec: float | None = None) -> Claim:
     claim = _get(db, claim_id)
     shipment = db.get(Shipment, claim.shipment_id)
-    ref = submit_claim(claim, shipment.courier if shipment else "kurir")
+    if shipment is None:
+        raise not_found("Resi")
+    _ensure_no_other_party(db, claim)
+    ref = submit_claim(claim, shipment.courier)
     claim = _transition(db, claim_id, status="submitted", submitted_at=utcnow(),
                         submitted_by=actor, submission_ref=ref)
     _resolve_anomaly(db, claim)
@@ -88,6 +120,7 @@ def reject(db: Session, claim_id: str, reason: str, actor: str,
            review_sec: float | None = None) -> Claim:
     claim = _transition(db, claim_id, status="rejected", reject_reason=reason)
     _resolve_anomaly(db, claim)
+    _clear_resolution(db, claim)
     audit.record(db, actor=actor, action="claim_rejected", entity="claim", entity_id=claim.id,
                  payload={"reason": reason, "review_sec": review_sec})
     return claim

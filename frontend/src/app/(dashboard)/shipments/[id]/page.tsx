@@ -8,6 +8,7 @@ import { toast } from "sonner";
 
 import { AnomalyCard } from "@/components/shipments/anomaly-card";
 import { ClaimPanel } from "@/components/shipments/claim-panel";
+import { ResolutionCard } from "@/components/shipments/resolution-card";
 import { ShipmentTimeline } from "@/components/shipments/shipment-timeline";
 import { Button } from "@/components/ui/button";
 import { SimulatedBadge } from "@/components/ui/simulated-badge";
@@ -81,6 +82,7 @@ export default function ShipmentDetailPage() {
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
         <div className="flex flex-col gap-6">
           <AnomalyCard shipment={s} />
+          <ResolutionCard shipment={s} />
 
           {s.buyer_report && (
             <section className="rounded-xl border bg-card p-6">

@@ -16,6 +16,9 @@ export type CaseType = "lost" | "damaged" | "return_fraud";
 export type Severity = "low" | "medium" | "high";
 export type AnalysisSource = "live" | "cache";
 
+/** Kesimpulan agen untuk resi: pihak yang dianggap bersalah (SRS 3.4). */
+export type ShipmentResolution = "courier" | "seller" | "buyer";
+
 export interface Anomaly {
   id: string;
   shipment_id: string;
@@ -38,6 +41,9 @@ export interface Shipment {
   sla_deadline: ISODate;
   item_name: string;
   item_value: number;
+  /** Kesimpulan investigasi: siapa yang bersalah. null = belum diputuskan / bukti kurang. */
+  resolution: ShipmentResolution | null;
+  resolution_reason: string | null;
   is_simulated: boolean;
   active_anomaly: Pick<Anomaly, "id" | "code" | "case_type" | "severity"> | null;
   /** Tenggat pengajuan klaim (acuan + claim_window_days kurir); null bila kebijakan belum ada. */
@@ -59,6 +65,7 @@ export interface InvestigationSummary {
   id: string;
   status: InvestigationStatus;
   outcome: Outcome | null;
+  verdict?: string | null;
   started_at: ISODate;
 }
 
@@ -227,6 +234,8 @@ export interface ClaimDetail extends ClaimSummary {
   draft: ClaimDraft & Record<string, unknown>;
   draft_issues: string[];
   decision_reason: string | null;
+  /** Kesimpulan sistem untuk resi klaim ini (dipakai menahan "Setujui & Kirim"). */
+  shipment_resolution: ShipmentResolution | null;
   item_name: string;
   item_value: number;
   updated_at: ISODate;

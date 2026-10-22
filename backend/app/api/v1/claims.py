@@ -70,6 +70,7 @@ def _detail(db, claim: Claim) -> ClaimDetailOut:
         **_summary(claim, shipment, inv, window_days_by_courier(db)), investigation_id=claim.investigation_id,
         narrative=claim.narrative, draft=draft, draft_issues=issues,
         decision_reason=inv.decision_reason if inv else None, item_name=shipment.item_name,
+        shipment_resolution=shipment.resolution,
         item_value=shipment.item_value, updated_at=claim.updated_at,
         submitted_at=claim.submitted_at, submitted_by=claim.submitted_by,
         submission_ref=claim.submission_ref, reject_reason=claim.reject_reason,

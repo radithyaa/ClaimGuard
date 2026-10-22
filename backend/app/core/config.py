@@ -5,10 +5,10 @@ lewat `services/settings_service.py`; nilai di sini adalah default-nya.
 """
 
 from functools import lru_cache
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator, model_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 _DEV_SECRET = "dev-only-secret-ganti-di-cloud"
 _DEV_PASSWORD = "claimguard-demo"
@@ -19,7 +19,10 @@ class Settings(BaseSettings):
 
     env: Literal["local", "cloud"] = "local"
     database_url: str = "sqlite:///./claimguard.db"
-    cors_origins: list[str] = ["http://localhost:3000"]
+    # Boleh JSON (`["https://a", "https://b"]`) atau dipisah koma (`https://a,https://b`), karena nilai
+    # env tanpa koma & tanpa kurung kotak dikira pydantic-settings sebagai JSON lalu gagal di-parse.
+    # NoDecode: parsing JSON bawaan dimatikan, urusan pemisahan ditangani validator di bawah.
+    cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:3000"]
 
     # Auth demo (FR-19): password tunggal, token HMAC
     auth_required: bool = False
@@ -71,6 +74,23 @@ class Settings(BaseSettings):
     seed_on_startup: bool = True
     mock_data_dir: str = "./data/mock"
     sample_media_dir: str = "./data/samples"
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def _split_origins(cls, value: object) -> object:
+        """Terima "a,b" maupun ["a", "b"]. Trailing slash dibuang: browser mengirim origin
+        tanpa slash, sehingga `https://x/` tidak akan pernah cocok."""
+        if isinstance(value, str):
+            text = value.strip()
+            if text.startswith("["):
+                import json
+
+                value = json.loads(text)
+            else:
+                value = text.split(",")
+        if isinstance(value, list | tuple):
+            return [str(v).strip().rstrip("/") for v in value if str(v).strip()]
+        return value
 
     @model_validator(mode="after")
     def _cloud_requires_real_secrets(self) -> "Settings":

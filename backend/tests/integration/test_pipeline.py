@@ -53,7 +53,8 @@ def clip_ids(db) -> list[str]:
         return list(s.scalars(select(Evidence.id).where(Evidence.kind == "cctv_clip")))
 
 
-def live_models(case: dict, db, confidence: float = 0.86) -> dict[str, ScriptedLlm]:
+def live_models(case: dict, db, confidence: float = 0.86,
+                focus: str = "packing") -> dict[str, ScriptedLlm]:
     ship = case["shipment_id"]
     evaluation = lambda: txt({
         "decision": "claim", "confidence": confidence, "verdict": "paket tertahan setelah serah kurir",
@@ -70,7 +71,7 @@ def live_models(case: dict, db, confidence: float = 0.86) -> dict[str, ScriptedL
         "investigator": ScriptedLlm(model="investigator", steps=[
             lambda: [fc("get_case_context", shipment_id=ship)],
             lambda: [fc("clip_cctv_video", shipment_id=ship, pre_sec=10, post_sec=15)],
-            lambda: [fc("analyze_media", ref_id=clip_ids(db)[0], focus="packing")],
+            lambda: [fc("analyze_media", ref_id=clip_ids(db)[0], focus=focus)],
             lambda: [fc("get_courier_policy", courier="jne")],
             lambda: txt("Barang terlihat dikemas pada detik 10 klip."),
         ]),

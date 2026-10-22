@@ -34,6 +34,8 @@ class ShipmentOut(BaseModel):
     sla_deadline: datetime
     item_name: str
     item_value: int
+    resolution: Literal["courier", "seller", "buyer"] | None
+    resolution_reason: str | None
     is_simulated: bool
     active_anomaly: AnomalyBrief | None = None
     claim_deadline: datetime | None = None  # None bila kebijakan kurir belum ada
@@ -52,6 +54,7 @@ class InvestigationBrief(BaseModel):
     id: str
     status: str
     outcome: str | None
+    verdict: str | None = None
     started_at: datetime
 
 

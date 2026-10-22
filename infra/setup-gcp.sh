@@ -14,7 +14,7 @@
 #   export PROJECT_ID=hackathon-primestep-18
 #   ./infra/setup-gcp.sh --create-infra        # sekali saja (butuh sqladmin/storage admin)
 #   ./infra/setup-gcp.sh --deployer you@x.com  # beri IAM ke anggota tim yang deploy
-#   ./infra/setup-gcp.sh --github owner/repo   # izinkan GitHub Actions deploy (OIDC, tanpa key)
+#   ./infra/setup-gcp.sh --github owner/repo   # (opsional, tidak dipakai) izin GitHub Actions deploy
 #
 # JANGAN menjalankan --create-infra bila project dipakai bersama tim lain
 # tanpa persetujuan PIC. Lihat infra/setup-gcp.md.
@@ -30,7 +30,7 @@ BUCKET="${BUCKET:-${PROJECT_ID}-claimguard-media}"
 SA_API="${SA_API:-claimguard-api}"
 SA_RUN="${SA_RUN:-claimguard-run}"           # runtime service (yang dipakai Cloud Run)
 SA_WEB="${SA_WEB:-claimguard-web}"
-SA_DEPLOY="${SA_DEPLOY:-claimguard-github-deployer}"  # dipakai workflow .github/workflows/deploy.yml
+SA_DEPLOY="${SA_DEPLOY:-claimguard-github-deployer}"  # untuk auto-deploy GitHub (opsional, tidak dipakai)
 BILLING_ACCOUNT="${BILLING_ACCOUNT:-}"
 # WIF pool/provider: keduanya tidak punya biaya dan aman dipertahankan.
 WIF_POOL="${WIF_POOL:-github}"

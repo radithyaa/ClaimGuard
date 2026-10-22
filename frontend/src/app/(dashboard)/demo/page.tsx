@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { SimulatedBadge } from "@/components/ui/simulated-badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { api, ApiError, type DemoScenario } from "@/lib/api-client";
+import { api, ApiError, USE_MOCK, type DemoScenario } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 
 const SCENARIOS: { key: DemoScenario; letter: string; title: string; tag: string; desc: string; expected: string }[] = [
@@ -52,7 +52,7 @@ const SCENARIOS: { key: DemoScenario; letter: string; title: string; tag: string
     letter: "D",
     title: "Penjual salah kirim",
     tag: "Kasus kontrol",
-    desc: "Pembeli menerima kaos merah M, padahal memesan kaos hitam L.",
+    desc: "Pembeli menerima kaos biru doubel, padahal memesan kaos biru tua (navy).",
     expected: "Agen mengenali kesalahan di gudang dan tidak mengajukan klaim ke kurir.",
   },
 ];
@@ -99,6 +99,25 @@ export default function DemoPanelPage() {
       const notSeeded = e instanceof ApiError && e.code === "demo_not_seeded";
       toast.error("Skenario gagal dijalankan", { description: notSeeded ? "Data demo belum ada. Tekan Reset data demo dulu." : e.message });
     },
+  });
+
+  // Mock-only: hentikan skrip tepat setelah Evaluator mengeluarkan keputusan, untuk menunjukkan
+  // bagaimana kesimpulan agentic sudah tertulis pada resi sebelum admin meninjau klaim.
+  // `seconds` = waktu event `decision` pada skrip mock (shp-003 11,5 dtk; skrip lain 12–12,4 dtk).
+  const verdictPreview = useMutation({
+    mutationFn: async ({ shipmentId, seconds }: { shipmentId: string; seconds: number }) => {
+      const { investigation_id } = await api.investigations.start(shipmentId);
+      await api.demo.pause(shipmentId, seconds);
+      return investigation_id;
+    },
+    onSuccess: (investigation_id) => {
+      qc.invalidateQueries();
+      toast.info("Kesimpulan agen sedang disiapkan", {
+        description: "Skrip dihentikan setelah keputusan agar Anda bisa melihat kesimpulan yang tertulis pada resi.",
+      });
+      router.push(`/investigations/${investigation_id}`);
+    },
+    onError: (e) => toast.error("Pratinjau kesimpulan gagal", { description: e.message }),
   });
 
   const checks = [
@@ -180,6 +199,25 @@ export default function DemoPanelPage() {
               </li>
             ))}
           </ul>
+          {USE_MOCK && (
+            <div className="flex flex-col gap-2 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="font-medium">Pratinjau kesimpulan resi</p>
+                <p className="text-sm text-muted-foreground">
+                  Skrip dihentikan tepat setelah Evaluator memutuskan, sehingga kesimpulan (penjual, pembeli, atau
+                  kurir) sudah tertulis pada resi padahal agen belum selesai.
+                </p>
+              </div>
+              <div className="flex shrink-0 flex-wrap gap-2">
+                <Button variant="outline" size="sm" onClick={() => verdictPreview.mutate({ shipmentId: "shp-011", seconds: 12 })} disabled={verdictPreview.isPending}>
+                  <Play /> Penjual salah kirim
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => verdictPreview.mutate({ shipmentId: "shp-003", seconds: 11.5 })} disabled={verdictPreview.isPending}>
+                  <Play /> Retur curang
+                </Button>
+              </div>
+            </div>
+          )}
         </section>
 
         <div className="flex flex-col gap-6">

@@ -39,7 +39,7 @@
       "file": "unboxing_kaos_hitam.mp4",
       "shipment": "SCP8899770011",
       "duration_sec": 35,
-      "description": "Video unboxing pembeli: kaos merah ukuran M diterima, pesanan tertulis hitam ukuran L"
+      "description": "Video unboxing pembeli: kaos biru doubel diterima, pesanan kaos biru tua (navy) — warna salah dari penjual"
     }
   ],
   "shipments": [
@@ -51,9 +51,78 @@
       "item_name": "Sepatu kulit pria", "item_value": 450000, "buyer_report": null,
       "pack_scan": {"scanned_at": "2026-10-17T01:00:40Z", "cctv": "cctv_packing_01"},
       "tracking_events": [
-        {"status": "Paket dikemas", "location": "Gudang Bandung", "occurred_at": "2026-10-17T01:00:40Z"},
+        {"status": "Paket dikemas", "location": "Gudang Bandung", "occurred_at": "2026-10-17T01:00:40Z"
+        },
         {"status": "Diserahkan ke kurir", "location": "Bandung", "occurred_at": "2026-10-17T03:00:00Z"},
         {"status": "Tiba di hub transit", "location": "Semarang", "occurred_at": "2026-10-17T21:30:00Z"}
+      ]
+    },
+    {
+      "tracking_number": "JNE0044558899", "courier": "jne", "status": "returned",
+      "origin": "Bandung", "destination": "Semarang",
+      "shipped_at": "2026-10-16T02:00:00Z", "sla_deadline": "2026-10-22T02:00:00Z",
+      "item_name": "Sepatu lari pria", "item_value": 550000,
+      "buyer_report": "Kotak saya terima dalam keadaan kosong, hanya ada bubble wrap. Saya minta retur dana.",
+      "pack_scan": {"scanned_at": "2026-10-17T01:01:10Z", "cctv": "cctv_packing_01"},
+      "tracking_events": [
+        {"status": "Diserahkan ke kurir", "location": "Bandung", "occurred_at": "2026-10-16T02:00:00Z"},
+        {"status": "Diterima pembeli", "location": "Semarang", "occurred_at": "2026-10-18T04:00:00Z"},
+        {"status": "Retur diajukan", "location": "Semarang", "occurred_at": "2026-10-19T03:00:00Z"}
+      ]
+    },
+    {
+      "tracking_number": "JNE0077445511", "courier": "jne", "status": "returned",
+      "origin": "Bandung", "destination": "Malang",
+      "shipped_at": "2026-10-15T03:00:00Z", "sla_deadline": "2026-10-21T03:00:00Z",
+      "item_name": "Hoodie polos navy, ukuran M", "item_value": 285000,
+      "buyer_report": "Saya pesan ukuran L, yang datang M. Ukurannya tidak sesuai dengan pesanan.",
+      "pack_scan": {"scanned_at": "2026-10-17T01:01:20Z", "cctv": "cctv_packing_01"},
+      "tracking_events": [
+        {"status": "Paket dikemas", "location": "Gudang Bandung", "occurred_at": "2026-10-17T01:01:20Z"
+        },
+        {"status": "Diserahkan ke kurir", "location": "Bandung", "occurred_at": "2026-10-15T03:00:00Z"},
+        {"status": "Diterima pembeli", "location": "Malang", "occurred_at": "2026-10-17T06:00:00Z"},
+        {"status": "Retur diajukan", "location": "Malang", "occurred_at": "2026-10-18T01:00:00Z"}
+      ]
+    },
+    {
+      "tracking_number": "JT3311882200", "courier": "jnt", "status": "returned",
+      "origin": "Bandung", "destination": "Palembang",
+      "shipped_at": "2026-10-16T05:00:00Z", "sla_deadline": "2026-10-23T05:00:00Z",
+      "item_name": "Kotak kosmetik 3 pcs", "item_value": 210000,
+      "buyer_report": "Isi paket kurang, dari 3 produk hanya 1 yang ada.",
+      "pack_scan": {"scanned_at": "2026-10-17T01:01:30Z", "cctv": "cctv_packing_01"},
+      "tracking_events": [
+        {"status": "Diserahkan ke kurir", "location": "Bandung", "occurred_at": "2026-10-16T05:00:00Z"},
+        {"status": "Diterima pembeli", "location": "Palembang", "occurred_at": "2026-10-19T02:00:00Z"},
+        {"status": "Retur diajukan", "location": "Palembang", "occurred_at": "2026-10-20T02:00:00Z"}
+      ]
+    },
+    {
+      "tracking_number": "SCP4455661199", "courier": "sicepat", "status": "returned",
+      "origin": "Bandung", "destination": "Denpasar",
+      "shipped_at": "2026-10-15T01:00:00Z", "sla_deadline": "2026-10-22T01:00:00Z",
+      "item_name": "Power bank 20000 mAh", "item_value": 340000,
+      "buyer_report": "Yang sampai bukan barang pesanan saya, ini kabel charger bukan power bank.",
+      "pack_scan": {"scanned_at": "2026-10-17T01:01:40Z", "cctv": "cctv_packing_01"},
+      "tracking_events": [
+        {"status": "Paket dikemas", "location": "Gudang Bandung", "occurred_at": "2026-10-17T01:01:40Z"
+        },
+        {"status": "Diserahkan ke kurir", "location": "Bandung", "occurred_at": "2026-10-15T01:00:00Z"},
+        {"status": "Diterima pembeli", "location": "Denpasar", "occurred_at": "2026-10-17T09:00:00Z"},
+        {"status": "Retur diajukan", "location": "Denpasar", "occurred_at": "2026-10-18T05:00:00Z"}
+      ]
+    },
+    {
+      "tracking_number": "SCP9911223344", "courier": "sicepat", "status": "returned",
+      "origin": "Bandung", "destination": "Balikpapan",
+      "shipped_at": "2026-10-17T02:00:00Z", "sla_deadline": "2026-10-24T02:00:00Z",
+      "item_name": "Topi baseball", "item_value": 95000,
+      "buyer_report": "Retur sah: ukuran terlalu kecil, barang lengkap dan segel utuh saat dibuka. Bukan karena kerusakan.",
+      "tracking_events": [
+        {"status": "Diserahkan ke kurir", "location": "Bandung", "occurred_at": "2026-10-17T02:00:00Z"},
+        {"status": "Diterima pembeli", "location": "Balikpapan", "occurred_at": "2026-10-19T04:00:00Z"},
+        {"status": "Retur diajukan", "location": "Balikpapan", "occurred_at": "2026-10-20T03:00:00Z"}
       ]
     },
     {
@@ -87,11 +156,12 @@
       "tracking_number": "SCP8899770011", "courier": "sicepat", "status": "returned",
       "origin": "Bandung", "destination": "Surabaya",
       "shipped_at": "2026-10-18T03:30:00Z", "sla_deadline": "2026-10-25T03:30:00Z",
-      "item_name": "Kaos polos hitam, ukuran L", "item_value": 95000,
-      "buyer_report": "Saya pesan kaos hitam ukuran L, tapi yang datang kaos merah ukuran M. Warnanya berbeda dari pesanan. Saya minta retur.",
-      "pack_scan": {"scanned_at": "2026-10-17T01:03:30Z", "cctv": "cctv_packing_02"},
+      "item_name": "Kaos polos biru tua (navy), ukuran L", "item_value": 95000,
+      "buyer_report": "Saya pesan kaos biru tua ukuran L, tapi yang datang kaos biru doubel. Warnanya berbeda dari pesanan. Saya minta retur.",
+      "_note": "Salah warna baju terlihat di cctv_packing_01 menit ke-5 (detik 300, lihat pack_scan.scanned_at).",
+      "pack_scan": {"scanned_at": "2026-10-17T01:05:00Z", "cctv": "cctv_packing_01"},
       "tracking_events": [
-        {"status": "Paket dikemas", "location": "Gudang Bandung", "occurred_at": "2026-10-17T01:03:30Z"},
+        {"status": "Paket dikemas", "location": "Gudang Bandung", "occurred_at": "2026-10-17T01:05:00Z"},
         {"status": "Diserahkan ke kurir", "location": "Bandung", "occurred_at": "2026-10-18T03:30:00Z"},
         {"status": "Diterima pembeli", "location": "Surabaya", "occurred_at": "2026-10-19T07:45:00Z"},
         {"status": "Retur diajukan", "location": "Surabaya", "occurred_at": "2026-10-20T01:00:00Z"}

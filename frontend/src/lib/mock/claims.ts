@@ -11,9 +11,13 @@ const initialStatus = new Map(db.claims.map((c) => [c.id, c.status]));
 
 const COURIER_NAME = { jne: "JNE", jnt: "J&T", sicepat: "SiCepat" } as const;
 
+// Draf yang dibuat manual pada mock agar pagar kesimpulan resi bisa diuji dari UI.
+const forgedDrafts = new Set<string>();
+
 /** POST /demo/reset: kembalikan status & draf klaim ke kondisi awal. */
 export function mockClaimsReset() {
   details.clear();
+  forgedDrafts.clear();
   for (const c of db.claims) {
     c.status = initialStatus.get(c.id) ?? c.status;
     const s = db.shipments.find((x) => x.id === c.shipment_id);
@@ -80,6 +84,7 @@ function detail(id: string): ClaimDetail {
     draft: picked.draft,
     draft_issues: picked.draft_issues,
     decision_reason: picked.decision_reason,
+    shipment_resolution: s.resolution,
     item_name: s.item_name,
     item_value: s.item_value,
     // Tanggal dasar: investigasi selesai, draf dibuat, lalu diputuskan admin
@@ -96,7 +101,7 @@ function detail(id: string): ClaimDetail {
 }
 
 function transition(id: string, patch: Partial<ClaimDetail>): ClaimDetail {
-  const d = detail(id);
+  const d: ClaimDetail = detail(id);
   if (d.status !== "pending_approval") throw new ApiError(409, "invalid_status", `Klaim sudah berstatus '${d.status}'`);
   Object.assign(d, patch, { updated_at: new Date().toISOString() });
   // Sinkronkan ringkasan agar antrian & KPI ikut berubah
@@ -104,7 +109,30 @@ function transition(id: string, patch: Partial<ClaimDetail>): ClaimDetail {
   if (summary) summary.status = d.status;
   const s = db.shipments.find((x) => x.id === d.shipment_id);
   if (s?.latest_claim?.id === id) s.latest_claim = { id, status: d.status };
+  if (s && patch.status === "rejected") {
+    // Penolakan admin = putusan manusia: kesimpulan agen tidak lagi mengikat resi.
+    forgedDrafts.delete(id);
+    s.resolution = null;
+    s.resolution_reason = null;
+  }
   return { ...d };
+}
+
+/** POST /claims: draf buatan manusia untuk resi yang sudah diputuskan; dipakai uji pagar approve. */
+export function mockClaimCreate(shipmentId: string): ClaimDetail {
+  const s = db.shipments.find((x) => x.id === shipmentId);
+  if (!s) throw new ApiError(404, "not_found", "Resi tidak ditemukan");
+  const id = `clm-${s.id}`;
+  if (!db.claims.some((c) => c.id === id)) {
+    db.claims.unshift({
+      id, shipment_id: s.id, tracking_number: s.tracking_number, courier: s.courier,
+      status: "pending_approval", confidence: 0.8, claim_value: s.item_value,
+      created_at: new Date().toISOString(), is_simulated: true, case_type: "lost", claim_deadline: null,
+    });
+  }
+  forgedDrafts.add(id);
+  details.delete(id);
+  return { ...detail(id) };
 }
 
 export const mockClaimGet = (id: string) => ({ ...detail(id) });
@@ -114,12 +142,21 @@ export const mockClaimUpdate = (id: string, narrative: string) => {
   return transition(id, { narrative });
 };
 
-export const mockClaimApprove = (id: string) =>
-  transition(id, {
+export const mockClaimApprove = (id: string) => {
+  const d = detail(id);
+  const s = db.shipments.find((x) => x.id === d.shipment_id);
+  // Pagar yang sama dengan claim_service._ensure_no_other_party di backend.
+  if (!forgedDrafts.has(id) && (s?.resolution === "seller" || s?.resolution === "buyer")) {
+    const party = s.resolution === "seller" ? "penjual" : "pembeli";
+    throw new ApiError(409, "resolution_blocks_claim",
+      `Investigasi menyimpulkan kesalahan ada di pihak ${party}, bukan kurir. Tolak draf ini dan tangani langsung dengan pihak tersebut`);
+  }
+  return transition(id, {
     status: "submitted",
     submitted_at: new Date().toISOString(),
     submitted_by: "admin",
-    submission_ref: `SIM-${detail(id).courier.toUpperCase()}-${Date.now().toString().slice(-6)}`,
+    submission_ref: `SIM-${d.courier.toUpperCase()}-${Date.now().toString().slice(-6)}`,
   });
+};
 
 export const mockClaimReject = (id: string, reason: string) => transition(id, { status: "rejected", reject_reason: reason });

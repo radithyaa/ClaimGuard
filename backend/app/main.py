@@ -57,10 +57,15 @@ def create_app() -> FastAPI:
     app = FastAPI(title="ClaimGuard API", version="0.1.0", lifespan=lifespan,
                   openapi_url=f"{API_PREFIX}/openapi.json", docs_url=f"{API_PREFIX}/docs")
     app.add_middleware(RequestIdMiddleware)
+    # Didaftarkan PALING AKHIR = lapisan terluar: header CORS ikut terpasang pada respons
+    # error dari exception handler dan 500, bukan hanya pada respons router (NFR-06).
     app.add_middleware(CORSMiddleware, allow_origins=s.cors_origins, allow_credentials=True,
-                       allow_methods=["GET", "POST", "PATCH", "DELETE"], allow_headers=["*"],
-                       expose_headers=["X-Request-ID"])
+                       allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+                       allow_headers=["*"], expose_headers=["X-Request-ID"])
     register_error_handlers(app)
+    # Tanpa origin yang cocok, browser melaporkan "No 'Access-Control-Allow-Origin'" tanpa
+    # menyebut penyebabnya. Catat sekali saat start agar salah isi CORS_ORIGINS cepat terlihat.
+    log.info("CORS allow_origins: %s", s.cors_origins)
 
     for module in (shipments, monitoring, investigations, claims, evidence, metrics, settings,
                    demo, ops):

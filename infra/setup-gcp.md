@@ -72,7 +72,7 @@ Yang dibuat:
 | Database/user | `claimguard` / `claimguard` | password acak → Secret Manager |
 | Secret | `claimguard-db-password`, `claimguard-demo-password` | nilai demo wajib diganti di console |
 | Secret | `claimguard-session-secret`, `claimguard-database-url` | dipasang `deploy-api.sh`; dibuat di §5.1/§8.2 bila belum ada |
-| WIF | pool `github`, provider `github` | hanya bila memakai auto-deploy §8 |
+| WIF | pool `github`, provider `github` | hanya bila auto-deploy dihidupkan lagi (§8) |
 
 **Catatan keamanan password:** script membuat password acak lalu menyalinnya ke Secret Manager sebagai teks. Script **tidak** mencetak password. Kalau butuh nilai aslinya untuk dijalankan lokal:
 
@@ -300,31 +300,21 @@ DEMO_PASSWORD=kata-sandi-baru ./infra/deploy-web.sh # tombol juri ikut berubah (
 
 ---
 
-## 8. Auto-deploy dari GitHub (opsional)
+## 8. ~~Auto-deploy dari GitHub~~ (tidak dipakai)
 
-`.github/workflows/deploy.yml` men-deploy **API dan web** setiap push ke `main` (dan bisa
-dipicu manual dari tab Actions). Workflow memanggil `infra/deploy-api.sh` dan
-`infra/deploy-web.sh` — flag Cloud Run tetap satu sumber kebenaran di script itu.
+Auto-deploy lewat GitHub Actions **sudah dihapus** (`.github/workflows/deploy.yml`). Ia
+menuntut service account deployer terpisah, Workload Identity Federation, dan satu set role
+tambahan — beban administrasi yang tidak sepadan untuk demo ini. Deploy kini **manual**:
 
-```mermaid
-flowchart LR
-    push[push ke main] --> auth[GitHub OIDC ke GCP]
-    auth --> apiJob[job api]
-    auth --> webJob[job web]
-    apiJob --> apiScript[deploy-api.sh]
-    webJob --> resolve[ambil URL claimguard-api]
-    resolve --> webScript[deploy-web.sh]
+```bash
+./infra/deploy-api.sh     # API dulu (CORS_ORIGINS = URL web)
+./infra/deploy-web.sh     # lalu web (API_URL = URL API)
 ```
 
-Kedua job berjalan paralel dan tidak saling menunggu, karena URL Cloud Run tidak berubah
-antar revisi service yang sama. `concurrency` membuat push terbaru membatalkan run yang
-sedang berjalan.
+Jalankan dari mesin PIC yang punya role di §1. Bagian 8.1–8.4 di bawah hanya dipertahankan
+sebagai catatan bila auto-deploy ingin dihidupkan lagi.
 
-**Tanpa service account key JSON** (NFR-04). Autentikasi memakai Workload Identity
-Federation: GitHub menandatangani token OIDC, GCP menukarnya menjadi kredensial sementara
-untuk service account deploy.
-
-### 8.1 Siapkan IAM (sekali, oleh PIC)
+### 8.1 Siapkan IAM (sekali, oleh PIC, hanya bila auto-deploy dihidupkan lagi)
 
 ```bash
 # Butuh GitHub CLI + `gh auth login` (dipakai untuk membaca repository_id).

@@ -6,7 +6,7 @@ import { useRef } from "react";
 
 import { ConfidenceLabel } from "@/components/ui/confidence";
 import { Skeleton } from "@/components/ui/skeleton";
-import { api, USE_MOCK } from "@/lib/api-client";
+import { api, ApiError, USE_MOCK } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import type { Evidence } from "@/types/api";
 
@@ -18,6 +18,10 @@ const SEVERITY = {
   critical: "border-destructive/40 bg-destructive/5",
 } as const;
 
+/** Media unggahan pada sesi/seed sebelumnya dihapus saat reset, sehingga pemutar video
+ *  mendapat 404. Dibedakan dari "video belum dipotong" agar pesannya jelas. */
+const MEDIA_GONE = [404, 410];
+
 /** Klip CCTV meja packing + temuan Vision AI dengan penanda timestamp (FR-11). */
 export function EvidencePanel({ evidence, analyzing }: { evidence: Evidence[]; analyzing: boolean }) {
   const clip = evidence.find((e) => e.kind === "cctv_clip") ?? evidence[0];
@@ -27,7 +31,10 @@ export function EvidencePanel({ evidence, analyzing }: { evidence: Evidence[]; a
     queryFn: () => api.evidence.media(clip!.id),
     enabled: !!clip && !USE_MOCK,
     staleTime: 5 * 60_000,
+    // Jangan ulangi 404: berkas memang sudah tidak ada.
+    retry: (count, error) => !(error instanceof ApiError && MEDIA_GONE.includes(error.status)) && count < 3,
   });
+  const gone = media.error instanceof ApiError && MEDIA_GONE.includes(media.error.status);
   const a = clip?.analysis_json;
   const marks = a?.timestamp_evidence ?? [];
   const findings = a?.findings ?? [];
@@ -53,7 +60,13 @@ export function EvidencePanel({ evidence, analyzing }: { evidence: Evidence[]; a
           ) : clip ? (
             <p className="flex items-center gap-2 text-sm opacity-80">
               <Video className="size-4" aria-hidden />
-              {USE_MOCK ? "Pratinjau video tidak tersedia di mode mock" : media.isError ? "Video tidak dapat dimuat" : "Memuat video…"}
+              {USE_MOCK
+                ? "Pratinjau video tidak tersedia di mode mock"
+                : gone
+                  ? "Rekaman sudah tidak tersedia (data demo direset). Jalankan skenario lagi untuk memotong ulang klip."
+                  : media.isError
+                    ? "Video tidak dapat dimuat"
+                    : "Memuat video…"}
             </p>
           ) : (
             <p className="flex items-center gap-2 text-sm opacity-80">

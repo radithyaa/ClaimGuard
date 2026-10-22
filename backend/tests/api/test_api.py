@@ -70,6 +70,29 @@ async def wait_status(c: httpx.AsyncClient, inv_id: str, *statuses: str, timeout
     raise AssertionError(f"status tetap {body['status']}")
 
 
+async def test_cors_allows_web_origin_on_claims_endpoint(client, monkeypatch):
+    """Browser memanggil API lintas origin (NFR-06). Tanpa header ini halaman klaim kosong
+    dengan pesan "No 'Access-Control-Allow-Origin'" di konsol."""
+    origin = "https://claimguard-web-259363364922.asia-southeast2.run.app"
+    monkeypatch.setattr(get_settings(), "cors_origins", [origin])
+    api = create_app()
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=api), base_url="http://test") as c:
+        pre = await c.options("/api/v1/claims?status=submitted&limit=100", headers={
+            "Origin": origin, "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "content-type"})
+        assert pre.status_code == 200
+        assert pre.headers["access-control-allow-origin"] == origin
+        assert pre.headers["access-control-allow-credentials"] == "true"
+
+        res = await c.get("/api/v1/claims?status=submitted&limit=100", headers={"Origin": origin})
+        assert res.status_code == 200
+        assert res.headers["access-control-allow-origin"] == origin
+
+        # Origin asing tetap tidak dilayani header CORS-nya.
+        other = await c.get("/api/v1/claims", headers={"Origin": "https://evil.example"})
+        assert "access-control-allow-origin" not in other.headers
+
+
 def parse_sse(text: str) -> list[dict]:
     return [json.loads(line[6:]) for line in text.splitlines() if line.startswith("data: ")]
 
@@ -84,9 +107,11 @@ async def test_health_and_uniform_errors(client):
 
 async def test_shipments_list_filter_and_detail(client):
     page = (await client.get("/shipments", params={"limit": 100})).json()
-    assert page["total"] == 16 and all(s["is_simulated"] for s in page["items"])
+    mock_rows = demo_data.load_mock()["shipments"]
+    assert page["total"] == len(mock_rows) and all(s["is_simulated"] for s in page["items"])
     jne = (await client.get("/shipments", params={"courier": "jne"})).json()
-    assert jne["total"] == 5 and {s["courier"] for s in jne["items"]} == {"jne"}
+    assert jne["total"] == sum(1 for r in mock_rows if r["courier"] == "jne")
+    assert {s["courier"] for s in jne["items"]} == {"jne"}
     found = (await client.get("/shipments", params={"q": "surabaya"})).json()["items"]
     assert {s["tracking_number"] for s in found} == {LOST, SELLER}  # keduanya ke Surabaya
     lost = next(s for s in found if s["tracking_number"] == LOST)
@@ -98,7 +123,7 @@ async def test_shipments_list_filter_and_detail(client):
     assert lost["claim_deadline"] == detail["claim_deadline"]
 
 
-async def test_scan_flags_scenarios_and_is_idempotent(client, db, monkeypatch):
+async def test_scan_flags_scenarios_and_is_idempotent(client, monkeypatch):
     # Waktu tetap: ambang tertahan per kurir dihitung dari tracking event terakhir, sehingga
     # hasil scan bergantung pada jam berjalan. Demo menganggap "sekarang" = 21 Okt 15.00 UTC.
     frozen = datetime(2026, 10, 21, 15, 0, tzinfo=UTC)
@@ -106,7 +131,9 @@ async def test_scan_flags_scenarios_and_is_idempotent(client, db, monkeypatch):
 
     r = (await client.post("/monitoring/scan")).json()
     flagged = {a["code"] for a in r["new_anomalies"]}
-    assert r["scanned"] == 16 and len(r["new_anomalies"]) == 5
+    assert r["scanned"] == len(demo_data.load_mock()["shipments"])
+    # 2 SLA_EXCEEDED + 1 laporan rusak + 6 sengketa retur (lihat shipments.json)
+    assert len(r["new_anomalies"]) == 9
     assert flagged == {"SLA_EXCEEDED", "BUYER_REPORTED_DAMAGE", "RETURN_DISPUTE"}
     # Dua resi 'lost': skenario utama (jam scan CCTV) dan satu resi SLA basi tanpa pergerakan.
     lost = sorted(a["reason_json"].get("days_stalled", a["reason_json"].get("days_late", 0))
@@ -114,7 +141,7 @@ async def test_scan_flags_scenarios_and_is_idempotent(client, db, monkeypatch):
     assert len(lost) == 2
     assert (await client.post("/monitoring/scan")).json()["new_anomalies"] == []
     listed = (await client.get("/shipments", params={"limit": 100})).json()["items"]
-    assert sum(1 for s in listed if s["active_anomaly"]) == 5
+    assert sum(1 for s in listed if s["active_anomaly"]) == len(r["new_anomalies"])
 
 
 async def test_lost_scenario_end_to_end_with_hitl(client, db, monkeypatch):
@@ -203,17 +230,89 @@ async def test_low_confidence_needs_evidence_creates_no_claim(client, db, monkey
 
 
 async def test_seller_error_closes_case_without_claim(client, db, monkeypatch):
-    use_scripted_agent(monkeypatch, db, tracking=SELLER, decision={
+    # Data mock menaruh scan resi ini di detik 300 cctv_packing_01 (menit ke-5). Fixture
+    # `client` memakai rekaman sintetis 40 dtk untuk nama yang sama, jadi arahkan scan ke
+    # detik 20 agar klip bisa dipotong dari rekaman uji itu.
+    with db() as s:
+        ship = ship_repo.get_by_tracking(s, SELLER)
+        scan = ship_repo.get_pack_scan(s, ship.id)
+        scan.scanned_at = scan.scanned_at.replace(minute=0, second=20)
+        s.commit()
+    use_scripted_agent(monkeypatch, db, tracking=SELLER, focus="consistency", decision={
         "decision": "seller_error", "confidence": 0.9,
-        "verdict": "barang yang dikemas berbeda dari pesanan",
-        "reason": "CCTV detik 30 memperlihatkan kaos merah ukuran M dikemas, pesanan hitam ukuran L."})
+        "verdict": "warna kaos yang dikemas berbeda dari pesanan",
+        "reason": "CCTV menit ke-5 memperlihatkan kaos biru doubel dikemas, padahal pesanan biru tua (navy)."})
     inv_id = (await client.post("/demo/scenario/wrong_item_seller")).json()["investigation_id"]
     inv = await wait_status(client, inv_id, "completed", "failed")
     assert inv["outcome"] == "seller_error" and inv["claim_id"] is None
     assert (await client.get("/claims")).json()["total"] == 0
     detail = (await client.get(f"/shipments/{inv['shipment_id']}")).json()
     assert detail["anomaly"] is None  # kasus ditutup dengan keputusan, tidak ditagihkan ke kurir
+    # Kesimpulan agen ikut menulis status resi: kesalahan ada di penjual, bukan kurir.
+    assert detail["resolution"] == "seller" and "navy" in detail["resolution_reason"]
+    logs = (await client.get("/audit-logs", params={"limit": 50})).json()
+    assert "shipment_resolution_set" in {log["action"] for log in logs}
     assert (await client.get(f"/investigations/{inv_id}/buyer-request")).status_code == 409
+
+
+async def test_claim_decision_sets_courier_cause_on_shipment(client, db, monkeypatch):
+    use_scripted_agent(monkeypatch, db)
+    inv_id = (await client.post("/demo/scenario/lost")).json()["investigation_id"]
+    inv = await wait_status(client, inv_id, "completed")
+    assert inv["outcome"] == "claim_drafted"
+    detail = (await client.get(f"/shipments/{inv['shipment_id']}")).json()
+    assert detail["resolution"] == "courier"
+    assert detail["resolution_reason"]
+    events = parse_sse((await client.get(f"/investigations/{inv_id}/stream")).text)
+    decision = next(e for e in events if e["type"] == "decision")
+    assert decision["payload"]["shipment_resolution"] == "courier"
+
+
+async def test_needs_evidence_does_not_overrule_existing_resolution(client, db, monkeypatch):
+    use_scripted_agent(monkeypatch, db, decision={
+        "decision": "needs_evidence", "confidence": 0.5,
+        "missing_evidence": ["video unboxing utuh"]})
+    inv_id = (await client.post("/demo/scenario/lost")).json()["investigation_id"]
+    inv = await wait_status(client, inv_id, "completed")
+    detail = (await client.get(f"/shipments/{inv['shipment_id']}")).json()
+    assert detail["resolution"] is None  # bukti kurang: tidak menuduh siapa pun
+
+
+async def test_approve_blocked_while_resolution_points_at_seller(client, db, monkeypatch):
+    with db() as s:
+        ship = ship_repo.get_by_tracking(s, SELLER)
+        scan = ship_repo.get_pack_scan(s, ship.id)
+        scan.scanned_at = scan.scanned_at.replace(minute=0, second=20)
+        s.commit()
+    use_scripted_agent(monkeypatch, db, tracking=SELLER, focus="consistency", decision={
+        "decision": "seller_error", "confidence": 0.9,
+        "verdict": "warna kaos yang dikemas berbeda dari pesanan",
+        "reason": "CCTV memperlihatkan kaos berbeda dari pesanan."})
+    inv_id = (await client.post("/demo/scenario/wrong_item_seller")).json()["investigation_id"]
+    inv = await wait_status(client, inv_id, "completed")
+    with db() as s:  # draf dibuat manual: jalur ini hanya menguji pagar di approve
+        from app.agents.outcome import InvestigationOutcome
+        from app.models import Investigation as Inv
+        from app.schemas.agent_outputs import ClaimDraft
+        from app.services import claim_service as cs
+        row = s.get(Inv, inv_id)
+        draft = ClaimDraft(
+            title="Klaim", tracking_number=SELLER, courier="sicepat", claim_type="lost",
+            narrative="x" * 30, chronology=[{"at": row.started_at.isoformat(), "event": "scan"}],
+            attachments=[], requested_compensation=95000)
+        outcome = InvestigationOutcome(outcome="claim_drafted", draft=draft, evaluation={
+            "decision": "claim", "confidence": 0.9, "verdict": "-", "reason": "-"})
+        claim_id = cs.create_from_draft(s, row, outcome).id
+        s.commit()
+    blocked = await client.post(f"/claims/{claim_id}/approve")
+    assert blocked.status_code == 409
+    assert blocked.json()["error"]["code"] == "resolution_blocks_claim"
+
+    rejected = await client.post(f"/claims/{claim_id}/reject", json={"reason": "Salah kirim dari gudang"})
+    assert rejected.json()["status"] == "rejected"
+    # Penolakan admin mencabut kesimpulan agen sehingga keputusan berikutnya milik manusia.
+    detail = (await client.get(f"/shipments/{inv['shipment_id']}")).json()
+    assert detail["resolution"] is None
 
 
 async def test_buyer_request_drafted_for_needs_evidence(client, db, monkeypatch):
@@ -369,7 +468,8 @@ async def test_import_shipments_csv(client):
 
     found = (await client.get("/shipments", params={"q": "CSV0000000001"})).json()
     assert found["total"] == 1 and found["items"][0]["courier"] == "jne"
-    assert (await client.get("/shipments", params={"limit": 100})).json()["total"] == 17
+    assert (await client.get("/shipments", params={"limit": 100})).json()["total"] \
+        == len(demo_data.load_mock()["shipments"]) + 1
 
     missing = (await client.post("/shipments/import",
                                  files={"file": ("x.csv", b"a,b\n1,2\n", "text/csv")}))
@@ -427,7 +527,8 @@ async def test_demo_reset_restores_data_and_keeps_policies(client, db, monkeypat
     inv_id = (await client.post("/demo/scenario/lost")).json()["investigation_id"]
     await wait_status(client, inv_id, "completed")
     report = (await client.post("/demo/reset")).json()
-    assert report["shipments"] == 16 and report["missing_media"] == []
+    assert report["shipments"] == len(demo_data.load_mock()["shipments"])
+    assert report["missing_media"] == []
     assert (await client.get("/claims")).json()["total"] == 0
     assert (await client.get("/anomalies")).json() == []
     assert len((await client.get("/couriers/policies")).json()) == 3

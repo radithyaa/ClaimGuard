@@ -145,6 +145,9 @@ export const api = {
   demo: {
     reset: () => request<{ shipments: number; media: number; missing_media: string[] }>("POST", "/demo/reset"),
     scenario: (name: DemoScenario) => request<{ investigation_id: string }>("POST", `/demo/scenario/${name}`),
+    // Mock-only: geser waktu skrip agar berhenti tepat setelah evaluator memutuskan.
+    pause: (shipmentId: string, seconds: number) =>
+      request<{ status: string }>("POST", `/demo/pause/${shipmentId}`, { body: { seconds } }),
   },
   health: () => request<{ status: string; db: string; ai_mode: string; storage: string }>("GET", "/health"),
   evidence: {
@@ -154,6 +157,8 @@ export const api = {
     list: (query: { status?: ClaimStatus; shipment_id?: string; limit?: number; offset?: number }) =>
       request<Paginated<ClaimSummary>>("GET", "/claims", { query }),
     get: (id: string) => request<ClaimDetail>("GET", `/claims/${id}`),
+    // Mock-only: draf buatan manusia untuk menguji pagar approve pada resi yang sudah diputuskan.
+    create: (shipment_id: string) => request<ClaimDetail>("POST", "/claims", { body: { shipment_id } }),
     update: (id: string, narrative: string) => request<ClaimDetail>("PATCH", `/claims/${id}`, { body: { narrative } }),
     // review_sec: lama admin meninjau (H5), disimpan di log audit
     approve: (id: string, reviewSec?: number) => request<ClaimDetail>("POST", `/claims/${id}/approve`, { body: { review_sec: reviewSec } }),

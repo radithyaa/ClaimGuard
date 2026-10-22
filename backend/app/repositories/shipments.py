@@ -4,6 +4,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models import Anomaly, MediaAsset, PackScanLog, Shipment
+from app.services import audit
 
 ACTIVE_STATUSES = ("created", "picked_up", "in_transit", "out_for_delivery", "returned")
 
@@ -83,3 +84,17 @@ def get_open_anomaly(session: Session, shipment_id: str) -> Anomaly | None:
         .where(Anomaly.shipment_id == shipment_id, Anomaly.status != "resolved")
         .order_by(Anomaly.detected_at.desc())
     )
+
+
+def set_resolution(session: Session, shipment: Shipment, *, party: str, reason: str,
+                   evidence_ids: list[str]) -> None:
+    """Menulis kesimpulan sistem (siapa yang bersalah) ke resi sendiri.
+
+    Status pelacakan tidak diubah: status itu milik kurir, sedangkan kesimpulan investigasi
+    disimpan terpisah di `resolution` supaya keduanya tidak saling menimpa.
+    """
+    shipment.resolution = party
+    shipment.resolution_reason = reason
+    audit.record(session, actor="agent:evaluator", action="shipment_resolution_set",
+                 entity="shipment", entity_id=shipment.id,
+                 payload={"party": party, "reason": reason, "evidence_ids": evidence_ids})

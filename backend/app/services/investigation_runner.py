@@ -22,10 +22,19 @@ from app.core.config import get_settings
 from app.core.errors import conflict, not_found
 from app.core.logging import investigation_id_var
 from app.db.session import session_scope
-from app.models import Anomaly, Investigation
+from app.models import Anomaly, Investigation, Shipment
 from app.repositories import investigations as inv_repo
 from app.repositories import shipments as ship_repo
 from app.services import audit, claim_service
+
+# Kesimpulan agen -> pihak yang bersalah. `claim` memberi dua kemungkinan: bukti packing kuat
+# berarti kurir yang menanggung (klaim diajukan), sedangkan bukti belum ada berarti belum bisa
+# menyalahkan siapa pun (null). `needs_evidence` tidak pernah mengubah kesimpulan resi.
+RESOLUTION_BY_DECISION: dict[str, str | None] = {
+    "claim": "courier",
+    "fraud_suspect": "buyer",
+    "seller_error": "seller",
+}
 
 log = logging.getLogger(__name__)
 
@@ -207,6 +216,25 @@ def _set_anomaly(db, inv: Investigation, status: str) -> None:
         a.status = status
 
 
+def _apply_resolution(db, inv: Investigation, outcome) -> str | None:
+    """Resi mencatat kesimpulan Evaluator (siapa yang bersalah menurut bukti).
+
+    `needs_evidence` dan `claim` dengan confidence rendah sengaja tidak mengubah kesimpulan:
+    menuduh pihak lain butuh bukti. Klaim tetap harus disetujui manusia, jadi baris `claims`
+    tidak dibuat di sini.
+    """
+    ev = outcome.evaluation
+    party = RESOLUTION_BY_DECISION.get(ev.decision)
+    if party is None or (party == "courier" and outcome.outcome != "claim_drafted"):
+        return None
+    shipment = db.get(Shipment, inv.shipment_id)
+    if shipment is None:
+        return None
+    ship_repo.set_resolution(db, shipment, party=party, reason=ev.reason,
+                             evidence_ids=ev.evidence_ids)
+    return party
+
+
 def _complete(inv_id: str, final_state: dict[str, Any]) -> None:
     try:
         outcome = persist_outcome(final_state)
@@ -223,15 +251,18 @@ def _complete(inv_id: str, final_state: dict[str, Any]) -> None:
             claim_id = claim_service.create_from_draft(db, inv, outcome).id
         else:  # needs_evidence: anomali dibuka lagi; fraud_suspect/seller_error: ditutup dengan keputusan
             _set_anomaly(db, inv, "open" if outcome.outcome == "needs_evidence" else "resolved")
+        resolution = _apply_resolution(db, inv, outcome)
         audit.record(db, actor="agent:evaluator", action="decision_made", entity="investigation",
                      entity_id=inv_id, payload={"decision": ev.decision,
                                                 "confidence": ev.confidence,
-                                                "guard_applied": outcome.guard_applied})
+                                                "guard_applied": outcome.guard_applied,
+                                                "shipment_id": inv.shipment_id})
         duration_ms = inv.duration_ms
     emit(inv_id, "decision", {
         "decision": ev.decision, "outcome": outcome.outcome, "confidence": ev.confidence,
         "verdict": ev.verdict, "reason": ev.reason, "evidence_ids": ev.evidence_ids,
         "missing_evidence": ev.missing_evidence, "guard_applied": outcome.guard_applied,
+        "shipment_resolution": resolution,
     }, agent="evaluator")
     emit(inv_id, "done", {"outcome": outcome.outcome, "claim_id": claim_id,
                           "duration_ms": duration_ms})

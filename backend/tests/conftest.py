@@ -57,13 +57,13 @@ def db(tmp_path, monkeypatch):
     return make_db(tmp_path / "test.db", monkeypatch)
 
 
-def seed_case(db, storage, cctv_video) -> dict:
+def seed_case(db, storage, cctv_video, tracking_number: str = "JNE0012345678") -> dict:
     """Satu resi skenario A (lost) dengan scan packing di detik ke-20 rekaman CCTV.
     Setiap pemanggilan membuat UUID baru (meniru demo reset)."""
     cctv_uri = storage.put_file(cctv_video, "samples/cctv_gudang_01.mp4")
     with db() as s:
         ship = Shipment(
-            tracking_number="JNE0012345678", courier="jne", status="in_transit",
+            tracking_number=tracking_number, courier="jne", status="in_transit",
             origin="Bandung", destination="Surabaya",
             shipped_at=REC_START + timedelta(hours=2),
             sla_deadline=REC_START + timedelta(days=3),

@@ -1,7 +1,7 @@
 from collections.abc import Iterator
 from contextlib import contextmanager
 
-from sqlalchemy import Engine, create_engine, event
+from sqlalchemy import Engine, create_engine, event, inspect, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.core.config import get_settings
@@ -34,7 +34,29 @@ SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 def init_db(bind: Engine | None = None) -> None:
     import app.models  # noqa: F401  (mendaftarkan semua tabel)
 
-    Base.metadata.create_all(bind or engine)
+    target = bind or engine
+    Base.metadata.create_all(target)
+    _add_missing_columns(target)
+
+
+# `create_all` tidak menambah kolom ke tabel yang sudah ada, sedangkan berkas SQLite demo dibuat
+# sebelum kolom baru lahir. Tambahkan kolom hilang dengan ALTER TABLE yang idempoten.
+_NEW_COLUMNS: dict[str, dict[str, str]] = {
+    "shipments": {"resolution": "VARCHAR(16)", "resolution_reason": "TEXT"},
+}
+
+
+def _add_missing_columns(bind: Engine) -> None:
+    inspector = inspect(bind)
+    existing_tables = set(inspector.get_table_names())
+    for table, columns in _NEW_COLUMNS.items():
+        if table not in existing_tables:
+            continue
+        present = {c["name"] for c in inspector.get_columns(table)}
+        for name, ddl_type in columns.items():
+            if name not in present:
+                with bind.begin() as conn:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl_type}"))
 
 
 @contextmanager

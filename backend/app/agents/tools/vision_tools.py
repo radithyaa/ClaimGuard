@@ -17,13 +17,21 @@ FOCUSES = ("packing", "damage", "consistency")
 
 
 def _resolve_evidence(db, ref_id: str, investigation_id: str, shipment_id: str) -> Evidence | None:
-    """ref_id boleh evidence_id (klip) atau media_id dari get_case_context (unboxing/foto)."""
+    """ref_id boleh evidence_id (klip) atau media_id dari get_case_context (unboxing/foto).
+
+    Media milik resi lain hanya bisa dirujuk bila media itu ikut muncul di `get_case_context`
+    kasus ini (mis. rekaman CCTV sumber scan packing), supaya kasus A tidak bisa menganalisis
+    bukti kasus B hanya dengan menebak id.
+    """
     ev = inv_repo.get_evidence(db, ref_id)
     if ev is not None:
         return ev if ev.investigation_id == investigation_id else None
     media = ship_repo.get_media(db, ref_id)
-    if media is None or media.kind == "cctv" or media.shipment_id != shipment_id:
+    if media is None or media.kind == "cctv":
         return None  # rekaman CCTV mentah harus dipotong dulu lewat clip_cctv_video
+    visible = {m.id for m in ship_repo.list_media_for_shipment(db, shipment_id)}
+    if media.id not in visible:
+        return None
     return inv_repo.add_evidence(
         db, investigation_id=investigation_id, kind=media.kind, uri=media.uri,
         source_media_id=media.id,
@@ -57,6 +65,13 @@ async def analyze_media_for(
             prompt_version("vision"),
         )
         item_name = shipment.item_name if shipment else ""
+        # File rekaman hilang/korup: beri pesan yang bisa ditindaklanjuti, bukan "AI tidak tersedia".
+        # Klip CCTV sudah diperiksa saat dipotong; unboxing/foto menjalankan FFmpeg di sini.
+        if ev_kind in ("unboxing", "photo"):
+            try:
+                storage_service.get_storage().ffmpeg_input(ev_uri)
+            except StorageError as exc:
+                return tool_error("media_missing", f"berkas rekaman {ev_kind} tidak tersedia: {exc}")
 
     mode = ai_cache.current_mode()
     analysis: VisionAnalysis | None = None

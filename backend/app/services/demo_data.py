@@ -2,11 +2,18 @@
 
 Reset menghapus data transaksi (resi, investigasi, klaim, audit) tetapi mempertahankan
 `courier_policies` dan `settings`, sehingga ekstraksi kebijakan tidak diulang setiap demo.
+
+Media: rekaman ditaruh manual di `sample_media_dir` (default `data/samples/<file>`). Saat seed,
+berkas yang ada disalin ke storage, durasinya diukur ulang dengan FFmpeg, dan `duration_sec` di
+JSON hanya dipakai bila video belum tersedia (mode `--synthetic`) sehingga waktu scan packing
+tidak pernah jatuh di luar rentang rekaman.
 """
 
 import json
 import logging
+import re
 import subprocess
+from dataclasses import dataclass
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
@@ -39,6 +46,9 @@ SCENARIOS = ("lost", "damaged", "return_fraud", "wrong_item_seller")
 _RESET_ORDER = (InvestigationEvent, Evidence, Claim, Investigation, Anomaly, PackScanLog,
                 TrackingEvent, MediaAsset, Shipment, AuditLog)
 
+# Ekstensi berkas video dasar yang dibuang saat mencocokkan nama file.
+_VIDEO_EXT = re.compile(r"\.(mp4|mov|m4v|webm|mkv)$", re.IGNORECASE)
+
 
 def _ts(value: str) -> datetime:
     return datetime.fromisoformat(value)
@@ -57,16 +67,17 @@ def scenario_tracking_number(name: str) -> str:
     raise KeyError(name)
 
 
-def _media_uri(file: str) -> str:
+def media_uri(file: str) -> str:
+    """URI media sampel: `local://samples/<file>` atau `gs://<bucket>/samples/<file>`."""
     s = get_settings()
-    key = f"samples/{file}"
+    key = f"samples/{Path(file).name}"  # hanya nama berkas: tolak path absolut / ".." dari JSON
     if s.storage_backend == "gcs":  # sampel diunggah sekali: gcloud storage cp data/samples/* gs://BUCKET/samples/
         return f"gs://{s.gcs_bucket}/{key}"
     return f"local://{key}"
 
 
 def _synthesize(path: Path, duration: float) -> None:
-    """Video uji (pola warna + jam) untuk dev lokal bila rekaman asli belum ada."""
+    """Video uji (pola warna) untuk dev lokal bila rekaman asli belum ada."""
     path.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run(
         [video_service.ffmpeg_exe(), "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi",
@@ -76,29 +87,96 @@ def _synthesize(path: Path, duration: float) -> None:
     )
 
 
-def _prepare_local_media(media: list[dict], synthetic: bool) -> list[str]:
-    """Menyalin data/samples/* ke storage lokal. Mengembalikan nama file yang tidak tersedia."""
+def _duration(path: Path) -> float | None:
+    """Durasi sebenarnya dari berkas video; None bila FFmpeg tidak bisa membacanya."""
+    try:
+        return round(video_service.probe_duration_sync(path), 3)
+    except (OSError, subprocess.SubprocessError, video_service.VideoError) as exc:
+        log.warning("durasi %s tidak terbaca: %s", path.name, exc)
+        return None
+
+def find_sample(directory: Path, file: str) -> Path | None:
+    """Cari berkas rekaman di `directory`, toleran terhadap nama case/ekstensi.
+
+    `cctv_packing_01.mp4` juga cocok dengan `CCTV_Packing_01.MOV`, `cctv_packing_01.mkv`, dst.
+    Mengembalikan None bila tidak ada (atau bila ada lebih dari satu kandidat — ambigu).
+    """
+    if not directory.is_dir():
+        return None
+    wanted = _VIDEO_EXT.sub("", Path(file).name).lower()
+    matches = [
+        p for p in directory.iterdir()
+        if p.is_file() and not p.name.startswith(".") and _VIDEO_EXT.search(p.name)
+        and _VIDEO_EXT.sub("", p.stem).lower() == wanted
+    ]
+    if len(matches) > 1:
+        log.warning("nama rekaman ambigu untuk %s: %s", file,
+                    ", ".join(sorted(p.name for p in matches)))
+        return None
+    return matches[0] if matches else None
+
+
+@dataclass(frozen=True)
+class MediaPlan:
+    """Rencana satu aset media: berkas sumber (bila ada) dan durasi yang akan disimpan."""
+
+    file: str
+    source: Path | None
+    duration_sec: float | None
+
+
+def plan_media(media: list[dict], *, synthetic: bool, samples_dir: Path | None = None) -> list[MediaPlan]:
+    """Tentukan berkas sumber & durasi tiap media tanpa menyentuh storage atau DB."""
+    s = get_settings()
+    directory = samples_dir or Path(s.sample_media_dir)
+    plans = []
+    for m in media:
+        src = find_sample(directory, m["file"])
+        if src is None and synthetic:
+            src = directory / m["file"]
+            if not src.exists():
+                _synthesize(src, m.get("duration_sec", 30))
+        plans.append(MediaPlan(m["file"], src, m.get("duration_sec")))
+    return plans
+
+
+def _prepare_local_media(
+    media: list[dict], synthetic: bool
+) -> tuple[list[MediaPlan], list[str]]:
+    """Salin rekaman ke storage lokal dan ukur durasinya.
+
+    Mengembalikan (rencana per media, nama file yang belum tersedia). Bila storage lokal
+    sudah punya berkas dari seed sebelumnya, berkas itu dipakai sebagai sumber walau
+    `data/samples` kosong.
+    """
     s = get_settings()
     if s.storage_backend != "local":
-        return []
+        return [MediaPlan(m["file"], None, m.get("duration_sec")) for m in media], []
     storage = storage_service.get_storage()
-    missing = []
-    for m in media:
-        src = Path(s.sample_media_dir) / m["file"]
-        if not src.exists() and synthetic:
-            _synthesize(src, m.get("duration_sec", 30))
-        if src.exists():
-            storage.put_file(src, f"samples/{m['file']}")
-        elif not (Path(s.storage_local_root) / "samples" / m["file"]).exists():
-            missing.append(m["file"])
-    return missing
+    stored_dir = Path(s.storage_local_root) / "samples"
+    plans: list[MediaPlan] = []
+    missing: list[str] = []
+    for plan in plan_media(media, synthetic=synthetic):
+        src = plan.source
+        if src is None:
+            existing = stored_dir / Path(plan.file).name
+            src = existing if existing.exists() else None
+        if src is None:
+            missing.append(plan.file)
+            plans.append(plan)
+            continue
+        stored = Path(storage.ffmpeg_input(storage.put_file(src, f"samples/{Path(plan.file).name}")))
+        measured = _duration(stored)
+        plans.append(MediaPlan(plan.file, src, measured or plan.duration_sec))
+    return plans, missing
 
 
 def reset_and_seed(db: Session, *, synthetic_media: bool = False) -> dict[str, Any]:
     data = load_mock()
     for model in _RESET_ORDER:
         db.execute(delete(model))
-    missing = _prepare_local_media(data["media"], synthetic_media)
+    plans, missing = _prepare_local_media(data["media"], synthetic_media)
+    duration_by_file = {p.file: p.duration_sec for p in plans}
 
     by_tracking: dict[str, Shipment] = {}
     for row in data["shipments"]:
@@ -121,9 +199,10 @@ def reset_and_seed(db: Session, *, synthetic_media: bool = False) -> dict[str, A
     for m in data["media"]:
         owner = by_tracking.get(m.get("shipment", ""))
         asset = MediaAsset(
-            kind=m["kind"], uri=_media_uri(m["file"]),
+            kind=m["kind"], uri=media_uri(m["file"]),
             recorded_start=_ts(m["recorded_start"]) if m.get("recorded_start") else None,
-            duration_sec=m.get("duration_sec"), shipment_id=owner.id if owner else None,
+            duration_sec=duration_by_file.get(m["file"], m.get("duration_sec")),
+            shipment_id=owner.id if owner else None,
             description=m.get("description", ""),
         )
         db.add(asset)

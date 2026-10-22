@@ -7,6 +7,8 @@ import { ErrorState } from "@/components/ui/states";
 import { api } from "@/lib/api-client";
 import { actionLabel, actorLabel } from "@/lib/audit-labels";
 import { formatDateTime } from "@/lib/format";
+import { RESOLUTION } from "@/lib/shipment-resolution";
+import type { ShipmentResolution } from "@/types/api";
 
 function detail(payload: Record<string, unknown>) {
   const parts: string[] = [];
@@ -14,6 +16,10 @@ function detail(payload: Record<string, unknown>) {
   if (typeof payload.reason === "string") parts.push(`alasan: ${payload.reason}`);
   if (typeof payload.submission_ref === "string") parts.push(`tiket ${payload.submission_ref}`);
   if (payload.guard_applied === true) parts.push("diturunkan oleh ambang keyakinan");
+  if (typeof payload.party === "string") {
+    const party = RESOLUTION[payload.party as ShipmentResolution]?.short ?? payload.party;
+    parts.push(`kesalahan: ${party}`);
+  }
   return parts.join(" · ");
 }
 

@@ -1,6 +1,8 @@
 """Endpoint operasional untuk tab "Sistem > Pengaturan".
 
 - `POST /shipments/import` + `GET /shipments/import/template` (Koneksi dan sumber data)
+- `POST /media` (unggah rekaman unboxing untuk satu resi)
+- `POST /demo/reseed` (seed ulang setelah rekaman baru ditaruh di data/samples)
 - `GET /connections`, `PATCH /connections/{id}` (status marketplace & drif kamera)
 - `DELETE /investigations/{id}`, `POST /investigations/purge` (Privasi dan data)
 
@@ -16,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import DB, User
 from app.core.errors import AppError, conflict, not_found
+from app.db.session import session_scope
 from app.models import (
     Anomaly,
     Claim,
@@ -36,7 +39,14 @@ from app.schemas.ops import (
     DeleteInvestigationOut,
     PurgeResultOut,
 )
-from app.services import audit, connections, csv_import, investigation_runner, storage_service
+from app.services import (
+    audit,
+    connections,
+    csv_import,
+    investigation_runner,
+    seed_service,
+    storage_service,
+)
 from app.services.settings_service import RuntimeSettingsPatch, get_runtime, update_runtime
 
 log = logging.getLogger(__name__)
@@ -67,6 +77,49 @@ def import_template() -> Response:
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": 'attachment; filename="templat-resi-claimguard.csv"'},
     )
+
+
+# ---------- media rekaman demo ----------
+
+@router.post("/media")
+async def upload_media(db: DB, user: User, file: UploadFile,
+                       shipment: str | None = Query(default=None),
+                       recorded_start: str | None = Query(default=None),
+                       origin_sec: float = Query(default=0, ge=0),
+                       replace: bool = Query(default=True),
+                       ) -> dict:
+    """Unggah rekaman ke storage sebagai bukti untuk satu resi.
+
+    - `shipment`: nomor resi pemilik rekaman (wajib untuk `kind=unboxing`).
+    - `origin_sec`: detik pertama yang benar-benar terekam di berkas. Bila rekaman memotong
+      bagian awal, isi detik asal adegan agar stempel waktu AI tetap cocok.
+
+    Rekaman CCTV gudang tidak diunggah lewat sini: CCTV dipotong lewat `pack_scan_logs`,
+    jadi cukup taruh berkasnya di `data/samples/` lalu jalankan seed.
+    """
+    from app.services import media_ingest
+
+    try:
+        return await media_ingest.ingest(
+            db, user, file, shipment_tracking=shipment, recorded_start=recorded_start,
+            origin_sec=origin_sec, replace=replace,
+        )
+    except ValueError as exc:
+        raise AppError(422, "invalid_media", str(exc)) from exc
+    except storage_service.StorageError as exc:
+        raise AppError(503, "storage_unavailable", str(exc)) from exc
+
+
+@router.post("/demo/reseed")
+async def reseed_demo(user: User) -> dict:
+    """Seed ulang resi & media tanpa menghapus kebijakan kurir (setara `python data/seed.py`).
+
+    Dipakai setelah rekaman baru ditaruh di `data/samples/`, agar durasi dan cache analisis
+    diperbarui tanpa menekan tombol reset di UI.
+    """
+    await investigation_runner.cancel_all()
+    with session_scope() as db:
+        return await seed_service.seed_report(db, actor=user, action="demo_seeded")
 
 
 # ---------- koneksi & kamera ----------

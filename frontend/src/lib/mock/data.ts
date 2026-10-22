@@ -31,11 +31,31 @@ const wib = (iso: string) => `${dateID(iso, { day: "numeric", month: "short", ye
 const base = {
   is_simulated: true,
   buyer_report: null,
+  resolution: null,
+  resolution_reason: null,
   latest_investigation: null,
   latest_claim: null,
   claim_deadline: null,
   anomaly: null,
   active_anomaly: null,
+};
+
+type ResolutionSeed = { resolution: ShipmentDetail["resolution"]; resolution_reason: string };
+
+/** Kesimpulan agen untuk resi yang investigasinya sudah selesai (sama dengan aturan backend). */
+const RESOLUTION_BY_SHIPMENT: Record<string, ResolutionSeed> = {
+  "shp-001": { resolution: "courier", resolution_reason: "Rekaman packing menunjukkan barang dikemas dan diserahkan; paket hilang setelah diserahkan ke kurir." },
+  "shp-002": { resolution: "courier", resolution_reason: "Kerusakan sudah terlihat sejak sebelum kardus dibuka; terjadi dalam perjalanan." },
+  "shp-003": { resolution: "buyer", resolution_reason: "CCTV packing memperlihatkan barang lengkap dimasukkan ke kardus; klaim isi paket kosong tidak didukung bukti." },
+  "shp-011": { resolution: "seller", resolution_reason: "CCTV meja packing memperlihatkan kaos berbeda dari pesanan; kesalahan terjadi saat pengemasan di gudang." },
+  "shp-015": { resolution: "buyer", resolution_reason: "Rekaman packing menunjukkan 5 produk dimasukkan; laporan kekurangan tidak didukung bukti." },
+  "shp-041": { resolution: "buyer", resolution_reason: "Isi paket sesuai saat dikemas; laporan pembeli tidak cocok dengan rekaman CCTV." },
+  "shp-042": { resolution: "courier", resolution_reason: "Barang dikemas utuh, tetapi tiba rusak; unit packing terlihat lembap dan segel rusak." },
+  "shp-016": { resolution: "courier", resolution_reason: "Barang dikemas dengan baik; botol pecah saat dalam perjalanan." },
+  "shp-017": { resolution: "courier", resolution_reason: "Barang dikemas sesuai pesanan, tetapi paket tiba penyok." },
+  "shp-037": { resolution: "courier", resolution_reason: "Kerusakan terjadi selama pengiriman; rekaman unboxing menunjukkan kipas berdebu dan rusak." },
+  "shp-038": { resolution: "courier", resolution_reason: "Rekaman packing sesuai pesanan; barang tidak sampai utuh ke pembeli." },
+  "shp-039": { resolution: "courier", resolution_reason: "Hard disk dikemas dan dipindai dengan benar; paket tidak bergerak melewati batas SLA." },
 };
 
 function anomaly(
@@ -204,12 +224,12 @@ const SCENARIOS: ShipmentDetail[] = [
     destination: "Surabaya",
     shipped_at: d("2026-10-18T03:30:00Z"),
     sla_deadline: d("2026-10-25T03:30:00Z"),
-    item_name: "Kaos polos hitam, ukuran L",
+    item_name: "Kaos polos biru tua (navy), ukuran L",
     item_value: 95000,
     buyer_report:
-      "Saya pesan kaos hitam ukuran L, tapi yang datang kaos merah ukuran M. Warnanya berbeda dari pesanan. Saya minta retur.",
+      "Saya pesan kaos biru tua ukuran L, tapi yang datang kaos biru doubel. Warnanya berbeda dari pesanan. Saya minta retur.",
     tracking_events: ev("011", [
-      ["Paket dikemas", "Gudang Bandung", "2026-10-17T01:03:30Z"],
+      ["Paket dikemas", "Gudang Bandung", "2026-10-17T01:05:00Z"],
       ["Diserahkan ke kurir", "Bandung", "2026-10-18T03:30:00Z"],
       ["Diterima pembeli", "Surabaya", "2026-10-19T07:45:00Z"],
       ["Retur diajukan", "Surabaya", "2026-10-20T01:00:00Z"],
@@ -1190,7 +1210,9 @@ const ANOMALY_CASES: ShipmentDetail[] = [
   },
 ];
 
-export const shipments: ShipmentDetail[] = [...SCENARIOS, ...HEALTHY, ...ANOMALY_CASES];
+export const shipments: ShipmentDetail[] = [...SCENARIOS, ...HEALTHY, ...ANOMALY_CASES].map((s) =>
+  RESOLUTION_BY_SHIPMENT[s.id] ? { ...s, ...RESOLUTION_BY_SHIPMENT[s.id] } : s,
+);
 
 export const policies: CourierPolicy[] = [
   {
@@ -1292,6 +1314,9 @@ export const auditLogs: AuditLog[] = [
   { id: "al-013", actor: "user", action: "claim_edited", entity: "claim", entity_id: "clm-011", payload_json: { length: 812 }, created_at: d("2026-10-20T04:12:00Z") },
   { id: "al-012", actor: "agent:drafter", action: "claim_drafted", entity: "claim", entity_id: "clm-015", payload_json: { tracking_number: "JNE0033445566", issues: 1 }, created_at: d("2026-10-20T07:05:00Z") },
   { id: "al-011", actor: "agent:evaluator", action: "decision_made", entity: "investigation", entity_id: "inv-015", payload_json: { decision: "fraud_suspect", confidence: 0.84, shipment_id: "shp-015" }, created_at: d("2026-10-21T12:18:00Z") },
+  { id: "al-011b", actor: "agent:evaluator", action: "shipment_resolution_set", entity: "shipment", entity_id: "shp-015", payload_json: { party: "buyer", reason: "Rekaman packing menunjukkan 5 produk dimasukkan; laporan kekurangan tidak didukung bukti." }, created_at: d("2026-10-21T12:18:01Z") },
+  { id: "al-020b", actor: "agent:evaluator", action: "shipment_resolution_set", entity: "shipment", entity_id: "shp-001", payload_json: { party: "courier", reason: "Rekaman packing menunjukkan barang dikemas dan diserahkan; paket hilang setelah diserahkan ke kurir." }, created_at: d("2026-10-21T03:04:41Z") },
+  { id: "al-020c", actor: "agent:evaluator", action: "shipment_resolution_set", entity: "shipment", entity_id: "shp-011", payload_json: { party: "seller", reason: "CCTV meja packing memperlihatkan kaos berbeda dari pesanan." }, created_at: d("2026-10-21T04:00:41Z") },
   { id: "al-010", actor: "agent:drafter", action: "claim_drafted", entity: "claim", entity_id: "clm-017", payload_json: { tracking_number: "SCP3344556677", issues: 0 }, created_at: d("2026-10-18T15:20:00Z") },
   { id: "al-009", actor: "agent:investigator", action: "investigation_failed", entity: "investigation", entity_id: "inv-033", payload_json: { code: "clip_unavailable", message: "Rekaman CCTV meja packing 2 tidak tersedia" }, created_at: d("2026-10-18T04:07:00Z") },
   { id: "al-008", actor: "user", action: "settings_updated", entity: "settings", entity_id: "runtime", payload_json: { sla_grace_hours: 0, scan_interval_min: 5 }, created_at: d("2026-10-18T02:30:00Z") },

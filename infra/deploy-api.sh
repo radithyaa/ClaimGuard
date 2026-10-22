@@ -80,6 +80,13 @@ if [[ -n "${CORS_ORIGINS:-}" ]]; then
     CORS_JSON+="]"
   fi
   ENV_VARS+=",CORS_ORIGINS=$CORS_JSON"
+elif [[ "$DRY_RUN" == "0" ]]; then
+  # --set-env-vars MENGGANTI seluruh env: variabel yang tidak dikirim akan HILANG, termasuk
+  # CORS_ORIGINS dari deploy sebelumnya. Jadi bukan sekadar "CORS belum diisi": sebaiknya
+  # gagal cepat daripada menyebar versi yang setiap request-nya diblokir browser (NFR-06).
+  echo "CORS_ORIGINS belum diset. Isi URL web Cloud Run (tanpa slash akhir), mis.:" >&2
+  echo "  export CORS_ORIGINS=https://claimguard-web-xxx.asia-southeast2.run.app" >&2
+  exit 1
 fi
 # Dibaca ADK untuk memanggil model (NFR-04: tanpa API key, lewat service account).
 ENV_VARS+=",GOOGLE_GENAI_USE_VERTEXAI=TRUE"

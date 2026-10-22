@@ -2,8 +2,8 @@
 import { ApiError } from "@/lib/api-client";
 import type { MetricsSummary, Shipment, ShipmentDetail } from "@/types/api";
 import * as db from "./data";
-import { mockClaimApprove, mockClaimGet, mockClaimReject, mockClaimsReset, mockClaimUpdate } from "./claims";
-import { mockBuyerRequest, mockCancel, mockRunsReset, mockStart, mockView } from "./investigation";
+import { mockClaimApprove, mockClaimCreate, mockClaimGet, mockClaimReject, mockClaimsReset, mockClaimUpdate } from "./claims";
+import { mockBuyerRequest, mockCancel, mockPause, mockRunsReset, mockStart, mockView } from "./investigation";
 
 // Skenario demo -> resi mock (backend: field "scenario" di shipments.json)
 const SCENARIO_SHIPMENT: Record<string, string> = { lost: "shp-001", damaged: "shp-002", return_fraud: "shp-003", wrong_item_seller: "shp-011" };
@@ -58,7 +58,8 @@ export async function mockRequest<T>(method: string, path: string, { query = {},
     .replace(/^\/shipments\/[\w-]+$/, "/shipments/:id")
     .replace(/^\/investigations\/[\w-]+(\/cancel|\/buyer-request)?$/, "/investigations/:id$1")
     .replace(/^\/claims\/[\w-]+(\/approve|\/reject)?$/, "/claims/:id$1")
-    .replace(/^\/demo\/scenario\/[\w-]+$/, "/demo/scenario/:id")}`;
+    .replace(/^\/demo\/scenario\/[\w-]+$/, "/demo/scenario/:id")
+    .replace(/^\/demo\/pause\/[\w-]+$/, "/demo/pause/:id")}`;
   const id = path.replace(/\/(cancel|approve|reject|buyer-request)$/, "").split("/").pop()!;
 
   switch (route) {
@@ -114,6 +115,8 @@ export async function mockRequest<T>(method: string, path: string, { query = {},
       const offset = Number(q("offset") ?? 0);
       return { items: rows.slice(offset, offset + limit), total: rows.length, limit, offset } as T;
     }
+    case "POST /claims":
+      return mockClaimCreate((body as { shipment_id: string }).shipment_id) as T;
     case "GET /claims/:id":
       return mockClaimGet(id) as T;
     case "PATCH /claims/:id":
@@ -131,6 +134,11 @@ export async function mockRequest<T>(method: string, path: string, { query = {},
       if (!sid) throw new ApiError(422, "validation_error", "Skenario tidak dikenal");
       mockStart(`inv-mock-${sid}`);
       return { investigation_id: `inv-mock-${sid}` } as T;
+    }
+    case "POST /demo/pause/:id": {
+      // Mock-only: hentikan waktu skrip di titik tertentu (mis. tepat setelah event `decision`).
+      mockPause(`inv-mock-${id}`, (body as { seconds: number }).seconds);
+      return { status: "paused" } as T;
     }
     case "GET /health":
       return { status: "ok", db: "ok", ai_mode: "cache", storage: "local" } as T;

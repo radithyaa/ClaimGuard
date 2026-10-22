@@ -18,6 +18,7 @@ import { EmptyState, ErrorState } from "@/components/ui/states";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api, ApiError } from "@/lib/api-client";
 import { COURIER_LABEL, formatDateTime, formatRupiah } from "@/lib/format";
+import { RESOLUTION } from "@/lib/shipment-resolution";
 import { cn } from "@/lib/utils";
 import type { ClaimDetail, ClaimStatus } from "@/types/api";
 
@@ -55,7 +56,10 @@ export default function ClaimReviewPage() {
     qc.invalidateQueries({ queryKey: ["metrics"] });
   };
   const onError = (e: Error) => {
-    if (e instanceof ApiError && e.status === 409) {
+    if (e instanceof ApiError && e.code === "resolution_blocks_claim") {
+      toast.error("Klaim ditahan kesimpulan investigasi", { description: e.message });
+      query.refetch();
+    } else if (e instanceof ApiError && e.status === 409) {
       toast.warning("Klaim sudah diproses", { description: "Status klaim berubah di tab atau perangkat lain. Data dimuat ulang." });
       query.refetch();
     } else toast.error("Aksi gagal", { description: e.message });
@@ -68,7 +72,7 @@ export default function ClaimReviewPage() {
   });
   const reject = useMutation({
     mutationFn: (reason: string) => api.claims.reject(id, reason, review.sec),
-    onSuccess: (d) => { onSettled(d); toast.info("Draf klaim ditolak"); },
+    onSuccess: (d) => { onSettled(d); qc.invalidateQueries({ queryKey: ["shipment", d.shipment_id] }); toast.info("Draf klaim ditolak"); },
     onError,
   });
   const save = useMutation({
@@ -139,6 +143,16 @@ export default function ClaimReviewPage() {
             <p className="text-sm text-muted-foreground">Draf telah diajukan dan tersimpan di log audit.</p>
           </div>
           <Button asChild variant="outline"><Link href="/claims">Kembali ke antrian</Link></Button>
+        </div>
+      )}
+
+      {pending && c.shipment_resolution && c.shipment_resolution !== "courier" && (
+        <div role="alert" className="rounded-xl border border-warning/50 bg-warning/10 p-4 text-sm">
+          <p className="font-medium">{RESOLUTION[c.shipment_resolution].long}.</p>
+          <p className="text-muted-foreground">
+            Investigasi menilai kesalahan bukan di pihak kurir, sehingga pengajuan klaim ditahan. Tolak draf ini
+            dan tangani langsung dengan pihak terkait.
+          </p>
         </div>
       )}
 

@@ -69,6 +69,9 @@ class Shipment(Base):
     item_name: Mapped[str] = mapped_column(String(256), default="")
     item_value: Mapped[int] = mapped_column(Integer, default=0)  # rupiah
     buyer_report: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Kesimpulan pihak yang bersalah: courier | seller | buyer (null = belum diputuskan)
+    resolution: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    resolution_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_simulated: Mapped[bool] = mapped_column(Boolean, default=True)
 
     tracking_events: Mapped[list["TrackingEvent"]] = relationship(

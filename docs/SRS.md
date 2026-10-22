@@ -123,9 +123,11 @@ Catatan teknis:
 - Di ADK, agen dengan `output_schema` tidak dapat memanggil tool. Karena itu pengumpulan bukti (Investigator) dan keputusan terstruktur (Evaluator) sengaja dipisah.
 - **Penjaga deterministik**: bila `evaluation.confidence` di bawah ambang (`settings.min_confidence`), kode aplikasi memaksa keputusan menjadi `needs_evidence` terlepas dari jawaban LLM.
 - Setelah run selesai, kode aplikasi (bukan agen) menyimpan hasil ke DB:
-  - `claim`: membuat baris `claims` berstatus `pending_approval`.
-  - `needs_evidence`: investigasi selesai dengan outcome `needs_evidence`; tidak ada klaim.
+  - `claim`: membuat baris `claims` berstatus `pending_approval`, dan menulis `shipments.resolution = courier`.
+  - `needs_evidence`: investigasi selesai dengan outcome `needs_evidence`; tidak ada klaim, dan kesimpulan resi tidak diubah (bukti kurang tidak boleh menuduh siapa pun).
   - `fraud_suspect`: investigasi selesai dengan outcome `fraud_suspect`; UI menyarankan menolak retur pembeli; tidak ada klaim ke kurir.
+- **Kesimpulan tertulis pada resi sendiri** (`shipments.resolution` = `courier` | `seller` | `buyer`, plus `resolution_reason`). Status pelacakan (`shipments.status`) **tidak** ditimpa karena itu data dari kurir; kesimpulan agentic disimpan terpisah agar keduanya tidak saling merusak. Setiap perubahan dicatat sebagai aksi audit `shipment_resolution_set` dan ikut dikirim di event SSE `decision` (`payload.shipment_resolution`).
+- Kesimpulan agen di atas kebijakan manusia, tetapi bukan pengganti manusia: bila `resolution` menunjuk penjual/pembeli, `POST /claims/{id}/approve` menolak dengan **409 `resolution_blocks_claim`**. Admin yang menilai lain memutuskan dengan menolak draf (alasan penolakan wajib), dan penolakan itu **mencabut** kesimpulan agen dari resi.
 - Inilah titik "agentic" yang harus terlihat jelas di demo: Investigator memilih tool sendiri, dan Evaluator memutuskan tindak lanjut dengan alasan yang ditampilkan di UI.
 
 ### 3.4 HITL lewat Status Database
@@ -330,7 +332,7 @@ Aturan tools: input divalidasi; tool **tidak pernah menerima path file** dari LL
 
 | Tabel | Kolom utama |
 | --- | --- |
-| `shipments` | id, tracking_number, courier, status, origin, destination, shipped_at, sla_deadline, item_name, item_value, buyer_report, is_simulated |
+| `shipments` | id, tracking_number, courier, status, origin, destination, shipped_at, sla_deadline, item_name, item_value, buyer_report, resolution (`courier`/`seller`/`buyer`, nullable), resolution_reason, is_simulated |
 | `tracking_events` | id, shipment_id, status, location, occurred_at |
 | `pack_scan_logs` | id, shipment_id, scanned_at, cctv_media_id |
 | `media_assets` | id, kind (`cctv`/`unboxing`/`photo`), uri (`gs://…` atau `local://…`), recorded_start, duration_sec, shipment_id (nullable), description |
@@ -360,7 +362,7 @@ ClaimGuard/
 ├── README.md                     # cara jalan lokal + deploy + skenario demo
 ├── .gitignore                    # .env, storage/, *.db, node_modules, .next
 ├── .github/
-│   └── workflows/deploy.yml      # CI: build & deploy Cloud Run
+│   └── workflows/                # kosong: auto-deploy butuh role GCP tambahan
 ├── assets/                       # ekspor Figma (referensi desain)
 ├── docs/
 │   ├── SRS.md                    # dokumen ini
@@ -1008,6 +1010,7 @@ Bagian ini mencatat selisih antara **yang dijanjikan** dan **yang berjalan** pad
 | 7 | **Deploy berhasil** — diverifikasi `claimguard-api-00007` dan `claimguard-web-00006` (22 Okt 2026). Sebelumnya `deploy-api.sh` gagal start karena `CORS_ORIGINS` dikirim sebagai URL mentah, padahal `cors_origins` bertipe `list[str]` dan pydantic-settings mem-parsing env sebagai JSON. Sudah diperbaiki di `infra/deploy-api.sh` | NFR-12 terpenuhi | — |
 | 8 | Frontend belum mengonsumsi beberapa endpoint ops di UI (mis. purge, `/settings/courier-thresholds` PUT, `/connections` PATCH) | Fitur backend ada tetapi tidak terlihat di demo | Pastikan tombolnya ada di `/settings/privacy` dan `/settings/connections` |
 | 9 | Pemisahan peran (admin vs peninjau) belum ada di UI Akun | Semua sesi berhak menyetujui klaim | Diterima sebagai batasan demo, dinyatakan di `/settings/account` |
+| 10 | ~~Browser menolak API dengan "No `Access-Control-Allow-Origin`"~~ | **Sudah diperbaiki** (22 Okt): `--set-env-vars` mengganti seluruh env, dan `CORS_ORIGINS` yang tidak ada di environment deploy membuat origin web hilang dari allow-list. Kini `deploy-api.sh` **berhenti** bila `CORS_ORIGINS` kosong, `CORSMiddleware` didaftarkan paling luar (header CORS ikut pada respons error/500), `PUT`/`OPTIONS` masuk `allow_methods`, `allow_origins` dicatat di log saat start, dan `tests/api/test_api.py::test_cors_allows_web_origin_on_claims_endpoint` menguji preflight endpoint `/claims` | Re-deploy API dengan `CORS_ORIGINS=https://<web>.run.app` |
 | 10 | **Registrasi, akun per pengguna, dan reset kata sandi lewat email belum ada** | Halaman login memakai email akun demo tunggal; tautan lupa kata sandi menjelaskan jalur PIC | Sengaja di luar lingkup (single-tenant). Ditambah tabel user + verifikasi email bila produk dikomersialkan |
 | 11 | **Tidak ada paywall/subscription** | Semua fitur terbuka selama demo | Keputusan sadar: paywall tidak menambah nilai penilaian dan menyembunyikan fitur yang dinilai. Model bisnis disampaikan di deck, bukan dikunci di produk |
 

@@ -103,7 +103,7 @@ function sellerScript(s: ShipmentDetail): Step[] {
     { at: 9000, type: "tool_end", agent: "investigator", payload: { tool: "analyze_media_for", status: "ok", duration_ms: 4000 }, source: "live" },
     { at: 9400, type: "tool_start", agent: "investigator", payload: { tool: "get_courier_policy", args: { courier: s.courier } } },
     { at: 10200, type: "tool_end", agent: "investigator", payload: { tool: "get_courier_policy", status: "ok", duration_ms: 800 }, source: "cache" },
-    { at: 10600, type: "thought", agent: "investigator", payload: { text: "Rekaman packing memperlihatkan kaos merah ukuran M yang dikemas, sedangkan pesanan tertulis kaos hitam ukuran L." } },
+    { at: 10600, type: "thought", agent: "investigator", payload: { text: "Rekaman packing memperlihatkan kaos biru doubel yang dikemas, sedangkan pesanan tertulis kaos biru tua (navy)." } },
     {
       at: 12000,
       type: "decision",
@@ -113,7 +113,7 @@ function sellerScript(s: ShipmentDetail): Step[] {
         outcome: "seller_error",
         confidence: 0.9,
         verdict: "Barang yang dikemas berbeda dari pesanan",
-        reason: "CCTV meja packing detik 0:30 memperlihatkan kaos merah ukuran M dimasukkan ke kardus, padahal pesanan kaos hitam ukuran L. Ketidaksesuaian terjadi saat pengemasan di gudang, jadi klaim ke kurir tidak diajukan. Sebaiknya retur pembeli ditindaklanjuti.",
+        reason: "CCTV meja packing menit ke-5 memperlihatkan kaos biru doubel dimasukkan ke kardus, padahal pesanan kaos biru tua (navy). Ketidaksesuaian terjadi saat pengemasan di gudang, jadi klaim ke kurir tidak diajukan. Sebaiknya retur pembeli ditindaklanjuti.",
         evidence_ids: ["evd-011"],
         missing_evidence: [],
       },
@@ -154,7 +154,7 @@ const SELLER_EVIDENCE_FINDINGS = {
   confidence: 0.9,
   findings: [
     { description: "Kaos berwarna merah diambil dari rak dan dimasukkan ke kardus", severity: "critical" as const },
-    { description: "Pesanan tertulis kaos polos hitam ukuran L; yang dikemas kaos merah ukuran M", severity: "critical" as const },
+    { description: "Pesanan tertulis kaos polos biru tua (navy) ukuran L; yang dikemas kaos biru doubel", severity: "critical" as const },
     { description: "Resi SCP8899770011 dipindai dan kardus disegel rapi", severity: "info" as const },
   ],
   timestamp_evidence: [
@@ -301,6 +301,11 @@ export function mockStart(id: string) {
 export function mockCancel(id: string) {
   const r = run(id);
   if (!r.cancelledAt) r.cancelledAt = Date.now();
+}
+
+/** Mock demo: tengahkan skrip di event `decision` sehingga UI menampilkan usulan keputusan Evaluator. */
+export function mockPause(id: string, seconds: number) {
+  runs.set(id, { startedAt: Date.now() - seconds * 1000 });
 }
 
 /** Pengganti EventSource di mode mock: kirim event setelah `afterSeq` sesuai jadwal skrip. */

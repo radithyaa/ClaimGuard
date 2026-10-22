@@ -19,6 +19,7 @@ export const ACTION_LABEL: Record<string, string> = {
   claim_submitted: "mengirim klaim",
   claim_rejected: "menolak draf klaim",
   buyer_evidence_requested: "meminta bukti ke pembeli",
+  shipment_resolution_set: "menetapkan kesimpulan status resi",
   settings_updated: "mengubah pengaturan",
 };
 
