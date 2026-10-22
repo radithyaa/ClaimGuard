@@ -25,7 +25,8 @@ SERVICE="${SERVICE:-claimguard-web}"
 SA_WEB="${SA_WEB:-claimguard-web}"
 REPO="${REPO:-cloud-run-source-deploy}"
 API_URL="${API_URL:?Set API_URL dulu: export API_URL=https://claimguard-api-xxx.run.app}"
-# Kata sandi untuk tombol "Coba sebagai juri". Kosong = tombol disembunyikan.
+# Kata sandi untuk tombol "Masuk sebagai juri". Kosong = kata sandi bawaan lokal, yang
+# ditolak backend cloud, jadi isi dengan secret claimguard-demo-password.
 # Nilai ini masuk ke bundle browser, jadi hanya untuk mode demo.
 DEMO_PASSWORD="${DEMO_PASSWORD:-}"
 PORT="${PORT:-8080}"

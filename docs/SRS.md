@@ -1,10 +1,12 @@
 # SRS ClaimGuard — Sistem Agentic AI Otonom untuk Otomatisasi Klaim Logistik UMKM
 
-Versi 2.4 · 22 Oktober 2026 · Status: **disinkronkan dengan kode (`main` @ `a03321b`)** — menggantikan v2.3
+Versi 2.6 · 22 Oktober 2026
 
-> **Ringkasan perubahan v2.4** (detail di bagian 18): dokumen diselaraskan dengan implementasi nyata. Delapan operasi API yang sudah berjalan tetapi belum tercatat (impor CSV, koneksi/drift kamera, hapus & purge investigasi, ambang per kurir) ditambahkan; FR-23 s.d. FR-27 baru mendokumentasikan fitur yang **sudah ada di kode** (tenggat klaim, laporan uang pulih, impor CSV, koneksi & drift kamera, ambang tertahan per kurir); struktur direktori §9 ditulis ulang dari berkas nyata; tabel frontend §5 dan matriks keterlacakan §17 diperbarui; bagian 19 baru mencatat celah yang diketahui. Tidak ada perubahan arsitektur agen dari v2.3.
->
-> **Cara menjaga dokumen tidak drift:** setiap PR yang mengubah endpoint, tabel, rute halaman, atau `RuntimeSettings` **wajib** memperbarui bagian 4, 5, 6, atau 8 yang terkait. Kontrak API yang berlaku adalah `backend/openapi.json`; bila keduanya berbeda, `openapi.json` menang dan SRS yang harus diperbaiki.
+> Dokumen ini adalah spesifikasi teknis lengkap ClaimGuard: kebutuhan, arsitektur, kontrak API,
+> model data, dan batasan. Untuk mencoba aplikasi, mulai dari [README](../README.md) dan
+> [Panduan Pengujian](PANDUAN-PENGUJIAN.md). Kode FR-xx dan NFR-xx merujuk ke daftar kebutuhan
+> di bagian 4 dan 11. Bila ada perbedaan dengan kontrak API, yang berlaku adalah
+> [`backend/openapi.json`](../backend/openapi.json).
 
 ## 1. Pendahuluan
 
@@ -58,7 +60,7 @@ Sistem berbasis web. Backend FastAPI menjalankan agen ADK dan tools lokal (FFmpe
 - Hacking berlangsung Rabu 21 Oktober 13.00 sampai Kamis 22 Oktober 13.00 WIB; timer tetap berjalan saat mentoring, makan, dan istirahat.
 - Pembekuan versi Kamis 22 Oktober 13.00 WIB: setelah itu kode, prompt agen, konfigurasi workflow, dan data uji tidak boleh berubah; hanya perbaikan kendala eksekusi dengan izin PIC teknis.
 - **Wajib memakai Google ADK** untuk orkestrasi agen (ketentuan panitia).
-- **Wajib di-deploy ke Google Cloud** (ketentuan panitia). Project GCP disediakan panitia; akun Owner dipegang **zizadhrmaa** (PIC GCP).
+- **Wajib di-deploy ke Google Cloud** (ketentuan panitia). Project GCP disediakan panitia; akun Owner dipegang PIC GCP tim.
 - Backend berjalan sebagai **satu instance** Cloud Run (lihat 3.6 dan NFR-13).
 - Memakai mock data resi dan video sampel buatan sendiri untuk live demo.
 - Ketergantungan pada kuota dan latensi Gemini di Vertex AI (dimitigasi dengan cache dan fallback, bagian 13).
@@ -226,7 +228,7 @@ Catatan prioritas: FR-23 s.d. FR-27 sudah **diimplementasikan** di kode. Priorit
 
 | Rute | Halaman | Fungsi utama | Komponen kunci |
 | --- | --- | --- | --- |
-| `/login` | Login | Masuk admin: email akun demo, kata sandi tim, "Ingat perangkat", tautan lupa kata sandi, dan tombol **Coba sebagai juri** | `LoginForm` |
+| `/login` | Login | Masuk admin: email akun demo, kata sandi tim, "Ingat perangkat", tautan lupa kata sandi, dan tombol **Masuk sebagai juri** | `LoginForm` |
 | `/` | Redirect | Arahkan ke `/dashboard` | n/a |
 | `/dashboard` | Ringkasan | KPI, grafik tren, aktivitas terbaru (dari audit log), tombol "Scan Sekarang" | `StatCard`, `TrendChart`, `AgentActivityFeed` |
 | `/shipments` | Daftar resi | Tabel resi dengan filter status/kurir, pencarian, badge anomali; tombol investigasi | `ShipmentTable`, `StatusBadge`, `FilterBar`, `ScanButton` |
@@ -366,9 +368,9 @@ ClaimGuard/
 ├── assets/                       # ekspor Figma (referensi desain)
 ├── docs/
 │   ├── SRS.md                    # dokumen ini
-│   ├── backend-a-handoff.md      # kontrak agen untuk Backend B
-│   ├── backend-status-2026-10-21.md  # verifikasi backend vs SRS
-│   └── data-dummy-dan-video.md   # rencana & spesifikasi data demo
+│   ├── PANDUAN-PENGUJIAN.md      # alur pengetesan untuk juri dan pengguna
+│   ├── data-demo.md              # isi data demo dan skenario
+│   └── media-setup.md            # cara memasang video CCTV dan unboxing
 ├── infra/
 │   ├── deploy-api.sh             # gcloud run deploy --source (backend)
 │   ├── deploy-web.sh             # gcloud run deploy --source (frontend)
@@ -435,7 +437,7 @@ ClaimGuard/
 │   │   ├── seed.py               # seed + --synthetic (video uji bila samples kosong)
 │   │   ├── mock/shipments.json
 │   │   ├── mock/courier_policies/  # jne.md, jnt.md, sicepat.md, fallback.json
-│   │   ├── samples/              # video CCTV/unboxing (diisi tim; lihat 15.5)
+│   │   ├── samples/              # video CCTV/unboxing (tidak disimpan di repo; lihat docs/data-demo.md)
 │   │   └── cache/                # rekaman respons AI untuk fallback (di-commit)
 │   ├── scripts/export_openapi.py
 │   ├── storage/                  # lokal saja, di-gitignore
@@ -505,7 +507,7 @@ ClaimGuard/
 | `frontend/src/lib/{api-client, api, auth, format, audit}.ts`, `types/`, `frontend/Dockerfile`, `next.config.ts` | Frontend A |
 | `frontend/src/app/(auth)/login/`, `(dashboard)/{investigations, claims/[id], demo}` | Frontend B |
 | `frontend/src/components/{investigation, claims}/`, `lib/{sse.ts, mock/}`, `not-found.tsx` | Frontend B |
-| Video sampel (rekaman fisik) | Frontend B (lihat 15.5); diunggah ke GCS oleh Backend B |
+| Video sampel (rekaman fisik) | Frontend: Alur Live & Demo; diunggah ke GCS dengan `infra/upload-samples.sh` |
 
 Antarmuka antar-backend:
 
@@ -541,7 +543,7 @@ Konfigurasi Cloud Run backend: `--min-instances=1 --max-instances=1 --no-cpu-thr
 
 | ID | Kategori | Kebutuhan |
 | --- | --- | --- |
-| NFR-01 | Performa | Waktu dari mulai investigasi hingga draf klaim siap kurang dari 30 detik pada skenario demo (mode live); diukur pertama kali paling lambat Rabu 23.00 |
+| NFR-01 | Performa | Waktu dari mulai investigasi hingga draf klaim siap kurang dari 30 detik pada skenario demo (mode live) |
 | NFR-02 | Keandalan | Dashboard stabil tanpa crash selama live demo; fallback cache bila Gemini gagal |
 | NFR-03 | Kegunaan | UI intuitif, bahasa Indonesia sederhana untuk admin non-teknis |
 | NFR-04 | Keamanan | Tidak ada secret di repo; Gemini lewat service account (tanpa API key); secret lain di Secret Manager; `.env.example` tersedia |
@@ -612,7 +614,7 @@ Konfigurasi Cloud Run backend: `--min-instances=1 --max-instances=1 --no-cpu-thr
 
 ### 12.7 DevOps dan Kolaborasi
 
-- **Deploy awal, deploy sering**: hello world di Cloud Run paling lambat Rabu 17.00, lalu deploy ulang di setiap checkpoint.
+- **Deploy awal, deploy sering**: hello world di Cloud Run sejak awal, lalu deploy ulang di setiap checkpoint.
 - `gcloud run deploy --source` (Cloud Build); tidak perlu Docker lokal di Windows.
 - Lokal: `uvicorn` + `npm run dev` dengan SQLite dan storage lokal; dokumentasikan di README (setup kurang dari 5 menit).
 - Git: branch per fitur, commit konvensional, PR kecil; `main` selalu dapat di-deploy.
@@ -639,284 +641,50 @@ Estimasi anggaran waktu skenario A: konteks kasus kurang dari 1 detik, potong da
 
 ## 14. Skenario Demo dan Kriteria Penerimaan
 
-| Skenario | Langkah | Kriteria lulus |
+Langkah pengujian lengkap untuk tiap skenario ada di [Panduan Pengujian](PANDUAN-PENGUJIAN.md).
+Rincian bukti per skenario ada di [data-demo.md](data-demo.md).
+
+| Skenario | Resi | Kriteria lulus |
 | --- | --- | --- |
-| A. Paket stuck / hilang (utama) | Scan → resi melewati SLA ditandai `lost` → investigasi → CCTV dipotong di jam scan packing → analisis membuktikan barang dikemas → keputusan `claim` → draf klaim | Klip tampil dan dapat diputar, keputusan dan alasan tampil, draf memuat nomor resi + kronologi + ketentuan kurir, total waktu di bawah 30 detik |
-| B. Paket rusak (opsional) | Laporan pembeli → analisis video unboxing → temuan kerusakan dengan timestamp → keputusan `claim` → draf | Verdict `damaged` dengan confidence dan timestamp ditampilkan, ketentuan kurir terlampir |
-| C. Retur curang (opsional) | Video unboxing pembeli dibandingkan dengan klip packing → tidak konsisten → keputusan `fraud_suspect` | Tidak ada klaim ke kurir; UI menyarankan menolak retur dan menampilkan temuan perbandingan |
-| D. Persetujuan HITL (bagian dari A) | Pemilik membuka draf → edit → klik Setujui | Status `submitted` (berlabel simulasi), tercatat di audit log; klik ganda menghasilkan 409 tanpa duplikat |
-| E. Kegagalan AI | Mode `auto` dengan Gemini diblokir (timeout paksa) | Sistem memakai cache berlabel "cache", alur selesai, dashboard tidak crash |
-| F. Hentikan Agen | Mulai investigasi → klik Hentikan Agen | Status `cancelled` dalam waktu kurang dari 2 detik, event `cancelled` tampil, tercatat di audit log |
+| A. Paket hilang (utama) | `JNE0012345678` | Resi melewati SLA ditandai `lost`; klip CCTV terpotong di jam scan packing dan dapat diputar; keputusan `claim` beserta alasan; draf memuat nomor resi, kronologi, dan ketentuan JNE |
+| B. Paket rusak | `JT7788990011` | CCTV packing dan video unboxing dianalisis; temuan `damaged` dengan confidence dan timestamp; keputusan `claim`; ketentuan J&T terlampir |
+| C. Sengketa retur tanpa unboxing | `JNE0033445566` | Keputusan `needs_evidence`; tidak ada klaim; UI menawarkan permintaan bukti ke pembeli |
+| D. Penjual salah kirim | `SCP4455667788` | Keputusan `seller_error`; tidak ada klaim; kesimpulan resi menunjuk penjual dan persetujuan klaim ke kurir diblokir |
+| Persetujuan HITL | (bagian dari A) | Edit → Setujui → status `submitted` berlabel simulasi, tercatat di audit log; persetujuan kedua menghasilkan 409 tanpa duplikat |
+| Kegagalan AI | semua | Mode `auto` dengan Gemini gagal: hasil cache berlabel `cache`, alur selesai, dashboard tidak crash |
+| Hentikan agen | semua | Status `cancelled`, event `cancelled` tampil, proses FFmpeg dihentikan, tercatat di audit log |
 
-## 15. Rencana Pengerjaan
+## 15. Pembagian Tugas
 
-> **Catatan status:** bagian ini adalah **rencana kerja asli** dan dipertahankan sebagai catatan proses. Sebagian besar item sudah selesai. Nama komponen frontend di sini (mis. `AgentTrace`, `ApprovalBar`, `ClaimDraftViewer`) adalah nama **rencana** yang berganti saat implementasi — daftar komponen yang benar ada di §5 dan §9. Status terkini dan celah yang tersisa ada di **§19**.
-
-Hacking dimulai Rabu 13.00. Jam 0–2 bertabrakan dengan mentoring (14.00–16.00), sehingga checkpoint Fondasi digeser ke 16.00.
-
-| Jam | Waktu (WIB) | Fokus | Output |
-| --- | --- | --- | --- |
-| 0–3 | Rabu 13.00–16.00 | Setup repo, setup GCP, skema DB, skeleton FastAPI dan Next.js, kontrak API, design spike | Proyek lokal berjalan kosong; kontrak dan token desain dibekukan |
-| 3–4 | Rabu 16.00–17.00 | **Deploy pertama** | `/health` dan halaman kosong di Cloud Run, terhubung Cloud SQL, satu panggilan Gemini via Vertex berhasil |
-| 4–6 | Rabu 17.00–19.00 | Monitoring, endpoint resi, halaman resi, rekam video sampel | FR-01, FR-02, FR-09 |
-| 6–10 | Rabu 19.00–23.00 | Tools video & vision, ekstraksi kebijakan, agen Investigator; dashboard | FR-03, FR-04, FR-05, FR-10; ukur NFR-01 pertama |
-| 10–15 | Rabu 23.00–Kamis 04.00 | Evaluator + Drafter, runner + SSE + cancel, klaim & HITL; halaman investigasi live | FR-06, FR-07, FR-11, FR-20, FR-22 |
-| 15–19 | Kamis 04.00–08.00 | Review klaim, mode demo, metrik, label sumber, cache rekam-putar | FR-13, FR-14, FR-17, FR-18, FR-21 |
-| 19–22 | Kamis 08.00–11.00 | Pengujian skenario A–F di Cloud Run, perbaikan bug; fitur baru dihentikan | NFR-01, NFR-02 |
-| 22–24 | Kamis 11.00–13.00 | Pembekuan: tes akhir dan tag versi beku | Versi beku sebelum 13.00 |
-
-Timer berjalan saat mentoring (Rabu 14.00–16.00 dan 19.00–21.00; Kamis 09.30–10.00 dan 10.30–12.00), makan, ibadah, dan istirahat. Empat orang bergiliran istirahat; minimal satu orang di kanal backend dan satu di kanal frontend sepanjang waktu, **dan minimal satu orang yang aktif selalu mampu men-deploy**.
-
-Prioritaskan semua kebutuhan **Must**. Skenario B dan C dikerjakan hanya bila skenario A berjalan di Cloud Run sebelum Kamis 04.00. Fitur **Could** (FR-15, FR-16) dianulir lebih dulu bila waktu kurang.
-
-### 15.1 Pembagian Tugas
-
-- **PIC GCP (zizadhrmaa)**: setup project panitia, billing/kredit, API, IAM, Cloud SQL, bucket, kuota Vertex. Bila PIC GCP juga salah satu dari empat developer, tugas ini dikerjakan di jam 0–3 sebelum tugas peran.
-- **Backend A — Agen & AI**: model data, agen ADK, prompt, tools video/vision, Gemini, cache dan fallback.
-- **Backend B — Domain, API & Ops**: kontrak API, monitoring, runner + SSE + cancel, klaim & HITL, demo & metrik, audit, Dockerfile & deploy.
-- **Frontend A — Design System & Halaman Data**: token, komponen `ui/`, layout, resi, dashboard, kurir, pengaturan, daftar klaim, deploy frontend.
-- **Frontend B — Alur Live, HITL & Demo**: investigasi live (SSE), review klaim, demo, login, komponen investigasi & klaim, **rekaman video sampel**.
-
-**Aturan kerja bersama**
-
-| Aturan | Penjelasan |
+| Peran | Tanggung jawab |
 | --- | --- |
-| Kontrak API dulu | Jam 0–3 Backend B mempublikasikan `openapi.json` dan contoh respons; frontend membangun di atas MSW |
-| Kontrak berubah lewat PR | Perubahan `openapi.json` lewat PR kecil dengan reviewer Backend B; frontend generate ulang tipe setelah merge |
-| Kepemilikan berkas | Sesuai tabel bagian 9; titik rawan adalah `models/`, `main.py`, dan `components/ui/`, jadi perubahan di sana lewat PR kecil |
-| Mock data milik Backend B | Frontend menyalin dari `data/mock/`, tidak mengarang data berbeda |
-| Git | Branch `feat/<area>-<nama>`, PR kecil, merge ke `main` di setiap checkpoint; `main` selalu dapat di-deploy |
-| Secret | Tidak ada secret di repo; akses GCP lewat IAM, bukan berbagi kata sandi |
-| Komunikasi | Sinkron 5 menit berempat di setiap checkpoint; blocker dilaporkan langsung |
+| Infrastruktur GCP | Project, billing/kredit, API, IAM, Cloud SQL, bucket, kuota Vertex AI, secret |
+| Backend: Agen & AI | Model data, agen ADK, prompt, alat video/analisis, Gemini, cache dan fallback |
+| Backend: Domain, API & Ops | Kontrak API, monitoring, runner + SSE + cancel, klaim & HITL, demo & metrik, audit, Docker & deploy |
+| Frontend: Desain & Halaman Data | Token desain, komponen `ui/`, layout, resi, dashboard, kurir, pengaturan, daftar klaim |
+| Frontend: Alur Live & Demo | Investigasi live (SSE), review klaim, panel demo, login, rekaman video sampel |
 
-**Checkpoint integrasi**
-
-| Waktu (WIB) | Checkpoint | Kriteria lulus |
-| --- | --- | --- |
-| Rabu 16.00 | Fondasi | Repo berjalan lokal; `/health` dan halaman kosong; kontrak API dipublikasikan; token desain dibekukan; GCP siap (API aktif, Cloud SQL dan bucket dibuat, IAM dibagikan) |
-| Rabu 17.00 | Deploy pertama | Kedua service hidup di Cloud Run; backend terhubung Cloud SQL dan berhasil memanggil Gemini via Vertex |
-| Rabu 19.00 | Monitoring | Resi dan flag anomali tampil di `/shipments` dari backend (lokal dan Cloud Run); video sampel tersedia di GCS |
-| Rabu 23.00 | Tools AI | Klip CCTV dan hasil vision tampil di UI sementara; Investigator memanggil tools; waktu pertama NFR-01 tercatat |
-| Kamis 04.00 | Agen lengkap | Alur resi sampai draf klaim berjalan di Cloud Run; SSE mengalir; Hentikan Agen berfungsi |
-| Kamis 08.00 | Fitur lengkap | Skenario A, D, E, F lulus end-to-end di Cloud Run; restyle desain selesai |
-| Kamis 11.00 | Dry run dan kode beku | Satu putaran demo penuh tanpa error; cache rekam-putar di-commit; setelahnya hanya perbaikan kendala eksekusi |
-
-### 15.2 Checklist PIC GCP (jam 0–3)
-
-- [ ] Pasang gcloud CLI; `gcloud auth login` dan `gcloud auth application-default login` dengan akun panitia
-- [ ] Pastikan billing/kredit project aktif
-- [ ] Aktifkan API: Cloud Run, Cloud Build, Artifact Registry, Cloud SQL Admin, Cloud Storage, Vertex AI, Secret Manager
-- [ ] Buat Cloud SQL Postgres tier terkecil (mulai paling awal karena provisioning 5–10 menit), database `claimguard`, user aplikasi
-- [ ] Buat bucket GCS (region sama dengan Cloud Run)
-- [ ] Verifikasi kuota dan region model Gemini di Vertex AI; uji satu panggilan
-- [ ] Buat service account backend dengan role di bagian 10
-- [ ] Berikan IAM kepada anggota tim yang men-deploy (minimal Backend B dan Frontend A)
-- [ ] Simpan password DB dan password demo di Secret Manager
-- [ ] Catat semua nama resource di `infra/setup-gcp.md` (tanpa secret)
-
-### 15.3 Checklist Backend A (Agen & AI)
-
-**Fase 0 (Rabu 13.00–16.00)**
-
-- [ ] Model SQLAlchemy untuk semua tabel bagian 8, `db/session.py` (SQLite lokal, Postgres via env)
-- [ ] Repository dasar: shipments, tracking_events, pack_scan_logs, media_assets, anomalies, investigations, evidence
-- [ ] `gemini_client.py` minimal: satu panggilan Gemini via Vertex berhasil (dipakai untuk uji deploy)
-- [ ] Pin versi `google-adk` dan `google-genai` di `pyproject.toml`
-
-**Fase 1 (Rabu 16.00–19.00)**
-
-- [ ] `storage_service.py` (GCS + lokal, signed URL)
-- [ ] `video_service.py` + tool `clip_cctv_video` (encode ulang H.264, input ID saja) — FR-03, NFR-05
-- [ ] Unit test tool video dengan fixture video pendek
-
-**Fase 2 (Rabu 19.00–23.00)**
-
-- [ ] Tool `analyze_media` dengan structured output dan cache — FR-04, FR-10, FR-21
-- [ ] `policy_extractor.py` (dipanggil `seed.py`) — FR-05
-- [ ] Tool `get_case_context`, `get_courier_policy`
-- [ ] Agen Investigator dengan prompt per `case_type`; uji run ADK lokal (`adk web` boleh dipakai untuk debug)
-- [ ] Ukur waktu skenario A pertama kali — NFR-01
-
-**Fase 3 (Rabu 23.00–Kamis 04.00)**
-
-- [ ] Agen Evaluator (`output_schema` keputusan) dan Drafter (`output_schema` draf) — FR-06, FR-22
-- [ ] `build_root_agent()` (SequentialAgent) dan callback skip Drafter
-- [ ] Penjaga confidence deterministik dan validasi fakta draf — FR-12
-- [ ] `after_tool_callback` yang memancarkan event untuk runner milik Backend B — FR-11
-- [ ] Batas panggilan tool per run dan timeout
-
-**Fase 4 (Kamis 04.00–08.00)**
-
-- [ ] `ai_cache.py` + callback fallback model (mode `live`/`auto`/`cache`) — NFR-02
-- [ ] Rekam respons live skenario A (lalu B, C bila ada) ke `data/cache/`
-- [ ] Golden set dan integration test run ADK dengan model di-mock
-
-**Fase 5 (Kamis 08.00–11.00)**
-
-- [ ] Optimasi waktu bila NFR-01 belum tercapai (resolusi klip, panjang prompt, jumlah giliran)
-- [ ] Perbaikan bug dari dry run pada agen dan tools
-
-### 15.4 Checklist Backend B (Domain, API & Ops)
-
-**Fase 0 (Rabu 13.00–16.00)**
-
-- [ ] Inisialisasi repo, `.gitignore`, `.env.example` — NFR-04
-- [ ] `main.py`, `core/config.py`, CORS, `/health`, format error seragam
-- [ ] Publikasikan `openapi.json` dan contoh respons seluruh endpoint bagian 6
-- [ ] `data/mock/shipments.json`: 15 sampai 20 resi mencakup skenario A, B, C, plus log scan dan pemetaan media
-- [ ] Dokumen kebijakan kurir tiruan (JNE, J&T, SiCepat) di `data/mock/courier_policies/`
-
-**Fase 1 (Rabu 16.00–19.00)**
-
-- [ ] `backend/Dockerfile` (python:3.12-slim + ffmpeg) dan `infra/deploy-api.sh`; **deploy pertama paling lambat 17.00** — NFR-12
-- [ ] `seed.py` (idempoten, `is_simulated = true`) — FR-01, FR-21
-- [ ] `services/monitoring.py`: aturan anomali dengan kode, severity, `case_type` — FR-02, FR-09
-- [ ] Endpoint `GET /shipments`, `GET /shipments/{id}`, `POST /monitoring/scan`, `GET /anomalies`
-- [ ] Unggah video sampel (dari Frontend B) ke GCS dan petakan di seed
-- [ ] Unit test aturan SLA
-
-**Fase 2 (Rabu 19.00–23.00)**
-
-- [ ] `GET /couriers/policies`, `GET /evidence/{id}/media` (signed URL)
-- [ ] `GET/PATCH /settings`, `POST /auth/login` (password dari Secret Manager) — FR-19
-- [ ] Scheduler APScheduler, nonaktif di mode demo — FR-08
-- [ ] `services/audit.py` dan `GET /audit-logs` — NFR-07
-
-**Fase 3 (Rabu 23.00–Kamis 04.00)**
-
-- [ ] `investigation_runner.py`: task registry, menjalankan ADK Runner, pemetaan event ke `investigation_events`
-- [ ] `POST /investigations`, `GET /investigations`, `GET /investigations/{id}`, SSE `/stream` dengan `Last-Event-ID` — FR-11
-- [ ] `POST /investigations/{id}/cancel` — FR-20
-- [ ] `claim_service.py`: `create_from_draft`, `submit_claim` (simulasi), transisi status atomik — FR-07, FR-14
-- [ ] Endpoint klaim: list, detail, PATCH, approve (409), reject (409) — FR-13
-- [ ] Deploy ulang ke Cloud Run dan uji alur di sana
-
-**Fase 4 (Kamis 04.00–08.00)**
-
-- [ ] `GET /metrics/summary` — FR-18
-- [ ] `POST /demo/scenario/{name}` dan `POST /demo/reset` — FR-17
-- [ ] Log JSON dengan `request_id` dan `investigation_id` — NFR-08
-
-**Fase 5 (Kamis 08.00–11.00)**
-
-- [ ] Smoke test skenario A, D, E, F di Cloud Run
-- [ ] `openapi.json` final disinkronkan ke frontend
-- [ ] Perbaikan bug dari dry run
-
-### 15.5 Checklist Frontend A (Design System & Halaman Data)
-
-**Fase 0 (Rabu 13.00–16.00)**
-
-- [ ] Inisialisasi Next.js (TypeScript strict, `output: standalone`), Tailwind, Shadcn UI, ESLint, Prettier
-- [ ] **Design spike** bersama Frontend B: token warna, tipografi, spacing, radius di `styles/` dan `components/ui/`
-- [ ] Layout dashboard: sidebar, topbar
-- [ ] `lib/api-client.ts` dan `types/` dari `openapi.json`
-
-**Fase 1 (Rabu 16.00–19.00)**
-
-- [ ] `frontend/Dockerfile` dan `infra/deploy-web.sh`; deploy pertama paling lambat 17.00 — NFR-12
-- [ ] `/shipments`: tabel, filter, pencarian, `StatusBadge`, paginasi
-- [ ] `/shipments/[id]`: `ShipmentTimeline`, `AnomalyCard`, tombol "Investigasi dengan AI", tautan investigasi/klaim terakhir
-- [ ] State loading, kosong, error pada tabel
-
-**Fase 2 (Rabu 19.00–23.00)**
-
-- [ ] `/dashboard`: `StatCard`, `TrendChart`, `AgentActivityFeed`, tombol "Scan Sekarang" — FR-18, FR-08
-- [ ] `/couriers` (`PolicyCard`) — FR-05
-- [ ] `/settings` (`SettingsForm`, termasuk mode AI)
-- [ ] Label "Data simulasi" pada KPI dan tabel — FR-21
-
-**Fase 3 (Rabu 23.00–Kamis 04.00)**
-
-- [ ] `/claims` dengan `ClaimTable` (`components/claims/ClaimTable.tsx`, pengecualian kepemilikan per berkas) — FR-14
-- [ ] Ganti MSW dengan backend nyata endpoint demi endpoint (resi, anomali, metrik, kurir, settings)
-- [ ] Terapkan desain akhir bila sudah tersedia
-
-**Fase 4–5 (Kamis 04.00–11.00)**
-
-- [ ] `NotificationBell` (Could) — FR-16
-- [ ] Aksesibilitas, responsif, konsistensi bahasa — NFR-03, NFR-09, NFR-10
-- [ ] Tidak ada error console di halaman data pada alur demo
-
-### 15.6 Checklist Frontend B (Alur Live, HITL & Demo)
-
-**Fase 0 (Rabu 13.00–16.00)**
-
-- [ ] Ikut design spike bersama Frontend A
-- [ ] MSW handler untuk `/investigations`, `/claims`, dan SSE palsu (memutar ulang event dari JSON)
-- [ ] Data mock investigasi (event trace, temuan, keputusan) dan klaim
-
-**Fase 1 (Rabu 16.00–19.00)**
-
-- [ ] **Rekam video sampel paling lambat 18.00** (serahkan ke Backend B dan Backend A):
-  - CCTV packing skenario A dengan overlay jam yang jelas dan label resi terlihat;
-  - unboxing barang rusak (B);
-  - unboxing yang isinya berbeda dengan packing (C);
-  - semua 10–60 detik, tanpa wajah atau data pribadi nyata.
-- [ ] `/login` — FR-19
-- [ ] `AgentTrace` presentasional dengan data mock
-
-**Fase 2 (Rabu 19.00–23.00)**
-
-- [ ] `EvidencePlayer` (signed URL, lompat ke timestamp temuan), `VisionFindings`, `DecisionCard`
-- [ ] Kerangka `/investigations/[id]` dengan state loading, error, kosong
-- [ ] `/demo` dengan `ScenarioLauncher` dan reset — FR-17
-
-**Fase 3 (Rabu 23.00–Kamis 04.00)**
-
-- [ ] `lib/sse.ts` (EventSource, reconnect dengan `Last-Event-ID`, cleanup)
-- [ ] Sambungkan `/investigations/[id]` ke SSE nyata — FR-11
-- [ ] Tombol **Hentikan Agen** dengan konfirmasi — FR-20
-- [ ] Lencana `Live`/`Cache` pada hasil AI — FR-21
-
-**Fase 4 (Kamis 04.00–08.00)**
-
-- [ ] `/claims/[id]`: `ClaimDraftViewer`, `ConfidenceMeter`, edit narasi, **Tolak** dengan alasan — FR-06, FR-13
-- [ ] `ApprovalBar`: **Setujui & Kirim** dengan dialog konfirmasi, nonaktif saat request berjalan, penanganan 409 — FR-07
-- [ ] Label "Data simulasi" pada hasil submit — FR-21
-
-**Fase 5 (Kamis 08.00–11.00)**
-
-- [ ] Rekaman layar demo sukses sebagai cadangan
-- [ ] Uji skenario E dan F dari sisi UI — NFR-02
-- [ ] Aksesibilitas dan responsif untuk player, SSE, dialog — NFR-09, NFR-10
-
-### 15.7 Checklist Bersama
-
-- [ ] Jam 0: sepakati kontrak API, nama skenario (`lost`, `damaged`, `return_fraud`), format waktu (UTC ISO 8601), token desain
-- [ ] Setiap checkpoint: merge ke `main`, deploy ke Cloud Run, jalankan alur dari awal di URL Cloud Run
-- [ ] Skenario A, D, E, F lulus (B dan C bila sempat)
-- [ ] Dry run demo penuh minimal 3 kali, termasuk skenario E
-- [ ] README: jalan lokal kurang dari 5 menit dan langkah deploy
-- [ ] Tidak ada secret di repo maupun riwayat commit — NFR-04
-- [ ] Slide dan naskah demo: satu orang bicara, satu mengoperasikan, dua siaga bug
-
-**Fase 6, Pembekuan Versi (Kamis 11.00–13.00)**
-
-- [ ] Smoke test skenario A dan E di Cloud Run
-- [ ] Hentikan perubahan kode, prompt, konfigurasi, dan data uji sebelum Kamis 13.00
-- [ ] Git tag versi beku; catat revisi Cloud Run yang aktif dan waktunya
-- [ ] Setelah pembekuan: perbaikan hanya untuk kendala eksekusi dengan izin PIC teknis, dicatat per perubahan
+Aturan kerja tim: kontrak API ditetapkan lebih dulu (`openapi.json`), perubahannya lewat PR kecil,
+`main` selalu dapat di-deploy, dan tidak ada secret di repositori.
 
 ## 16. Risiko dan Mitigasi
 
 | Risiko | Dampak | Mitigasi |
 | --- | --- | --- |
-| Deploy baru dicoba di akhir | Demo gagal di cloud | Deploy pertama Rabu 17.00, deploy ulang tiap checkpoint |
+| Deploy baru dicoba di akhir | Demo gagal di cloud | Deploy sejak awal dan diulang di setiap tahap |
 | Kuota atau region Vertex tidak cukup | Gemini gagal | Verifikasi di jam pertama; region model terpisah dari region Cloud Run bila perlu; cache rekam-putar |
-| Latensi Gemini | NFR-01 gagal | Klip pendek 720p, URI `gs://`, ukur sejak Rabu 23.00, cache |
+| Latensi Gemini | NFR-01 gagal | Klip pendek 720p, URI `gs://`, cache |
 | Perbedaan versi ADK antar developer | Kode tidak kompatibel | Versi di-pin di lockfile; jangan menyalin contoh 1.x mentah-mentah |
 | Background task membeku di Cloud Run | Investigasi macet | `--no-cpu-throttling`, min=max=1 |
-| Video sampel terlambat | FR-03/FR-04 tidak teruji | PIC Frontend B, tenggat Rabu 18.00 |
 | Hasil Vision AI tidak konsisten | Keputusan salah | Structured output, penjaga confidence, tinjauan manusia wajib |
 | Timestamp CCTV tidak sinkron | Klip salah | Overlay jam pada rekaman, margin pre/post, encode ulang yang akurat |
 | Scope terlalu besar | Fitur tidak selesai | MoSCoW; B dan C opsional; Could dianulir dulu |
 | Kredensial GCP bocor | Penyalahgunaan kredit panitia | IAM per anggota, tanpa kunci di repo, service account khusus |
 | Prompt injection dari teks eksternal | Agen menyimpang | Teks eksternal tidak masuk instruksi, tools hanya menerima ID, agen tanpa tool kirim |
 | Endpoint pemicu AI dipanggil berulang saat demo | Kredit Vertex terkuras / antrean penuh | Login wajib untuk endpoint tulis (FR-19), guard investigasi ganda (409), tombol nonaktif saat request berjalan. **Rate limiting belum ada** |
-| `data/samples/` kosong | Investigasi berhenti di `clip_cctv_video` | Rekam 5 video sesuai `docs/data-dummy-dan-video.md` §2 sebelum pembekuan |
+| Video sampel tidak ada di server | Investigasi berhenti di `clip_cctv_video` | Video diunggah ke `gs://<bucket>/samples/` dengan `infra/upload-samples.sh`; panel demo menampilkan media yang hilang saat reset |
 | `data/cache/` kosong | Fallback mode `auto` tidak berfungsi saat Gemini gagal | Rekam ketiga skenario dalam `AI_MODE=live` lalu commit |
-| Data demo terasa "sudah diatur" | Juri menganggap hasil palsu | Label `is_simulated`/`source` di semua keluaran; siapkan skenario E (Gemini gagal) dan F (cancel) untuk menunjukkan perilaku nyata |
+| Data demo terasa "sudah diatur" | Juri menganggap hasil palsu | Label `is_simulated`/`source` di semua keluaran; tunjukkan skenario kegagalan AI dan Hentikan agen untuk menunjukkan perilaku nyata |
 
 ## 17. Matriks Keterlacakan Ringkas
 
@@ -940,6 +708,14 @@ Prioritaskan semua kebutuhan **Must**. Skenario B dan C dikerjakan hanya bila sk
 | NFR-11 | hapus/purge investigasi, retensi | `/settings/privacy` | `DELETE /investigations/{id}`, `/investigations/purge` |
 
 ## 18. Catatan Perubahan
+
+**Versi 2.6 (22 Oktober 2026) — dokumentasi untuk publik dan juri**
+
+- Dokumen ditulis ulang untuk pembaca umum dan juri: rencana kerja jam-per-jam dan checklist internal per anggota (bagian 15 lama) diringkas menjadi tabel pembagian tugas.
+- Bagian 14 disesuaikan dengan empat skenario yang ada di panel demo (A paket hilang, B paket rusak, C sengketa retur tanpa unboxing, D penjual salah kirim).
+- Bagian 19 diperbarui: video sampel sudah ada di Cloud Storage dan deploy sudah berjalan.
+- Tombol login demo berganti nama menjadi **Masuk sebagai juri** dan selalu tampil; tanpa `NEXT_PUBLIC_DEMO_PASSWORD` tombol memakai kata sandi bawaan backend lokal.
+- Dokumen baru: [Panduan Pengujian](PANDUAN-PENGUJIAN.md) dan [data-demo.md](data-demo.md) (menggantikan `data-dummy-dan-video.md`). Catatan serah-terima internal (`backend-a-handoff.md`, `backend-status-2026-10-21.md`) dihapus.
 
 **Versi 2.5 (22 Oktober 2026) — alur login disempurnakan**
 
@@ -997,21 +773,18 @@ Dokumen sebelumnya (v2.3) ditulis sebagai *rencana*. Setelah implementasi, beber
 
 ## 19. Celah yang Diketahui (Known Gaps)
 
-Bagian ini mencatat selisih antara **yang dijanjikan** dan **yang berjalan** pada versi beku, agar tidak ada klaim berlebihan di depan juri. Status per 22 Oktober 2026.
+Bagian ini mencatat selisih antara yang dijanjikan dan yang berjalan, agar tidak ada klaim
+berlebihan. Status per 22 Oktober 2026.
 
-| # | Celah | Dampak | Tindakan |
+| # | Celah | Dampak | Status / rencana |
 | --- | --- | --- | --- |
-| 1 | `backend/data/samples/` kosong; video hanya dapat dihasilkan `seed.py --synthetic` | Investigasi berhenti di `clip_cctv_video` bila media tidak ada; analisis Vision atas rekaman asli belum terbukti | Rekam 5 video sesuai `docs/data-dummy-dan-video.md` §2 |
-| 2 | `backend/data/cache/` kosong | Mode `auto`/`cache` tidak punya rekaman; skenario E belum lulus end-to-end | Rekam ketiga skenario di `AI_MODE=live`, commit hasilnya |
-| 3 | Belum ada **rate limiting** pada endpoint pemicu AI (NFR-06, Should) | Klik berulang dapat menguras kredit Vertex | Middleware in-memory sederhana |
-| 4 | ~~`/settings/account` tertaut tetapi halamannya tidak ada~~ | **Sudah diperbaiki** (22 Okt): halaman `AccountForm` ditambahkan | — |
-| 5 | **Golden-set evaluasi** agen (§12.1) belum diimplementasikan | Kualitas keputusan agent tidak diuji regresi saat prompt berubah | 5–10 kasus + skrip pembanding |
-| 6 | Pemisahan peran pengguna belum ada (satu password demo) | Peninjau demo memegang hak menyetujui | Diterima sebagai batasan; sampaikan terbuka |
-| 7 | **Deploy berhasil** — diverifikasi `claimguard-api-00007` dan `claimguard-web-00006` (22 Okt 2026). Sebelumnya `deploy-api.sh` gagal start karena `CORS_ORIGINS` dikirim sebagai URL mentah, padahal `cors_origins` bertipe `list[str]` dan pydantic-settings mem-parsing env sebagai JSON. Sudah diperbaiki di `infra/deploy-api.sh` | NFR-12 terpenuhi | — |
-| 8 | Frontend belum mengonsumsi beberapa endpoint ops di UI (mis. purge, `/settings/courier-thresholds` PUT, `/connections` PATCH) | Fitur backend ada tetapi tidak terlihat di demo | Pastikan tombolnya ada di `/settings/privacy` dan `/settings/connections` |
-| 9 | Pemisahan peran (admin vs peninjau) belum ada di UI Akun | Semua sesi berhak menyetujui klaim | Diterima sebagai batasan demo, dinyatakan di `/settings/account` |
-| 10 | ~~Browser menolak API dengan "No `Access-Control-Allow-Origin`"~~ | **Sudah diperbaiki** (22 Okt): `--set-env-vars` mengganti seluruh env, dan `CORS_ORIGINS` yang tidak ada di environment deploy membuat origin web hilang dari allow-list. Kini `deploy-api.sh` **berhenti** bila `CORS_ORIGINS` kosong, `CORSMiddleware` didaftarkan paling luar (header CORS ikut pada respons error/500), `PUT`/`OPTIONS` masuk `allow_methods`, `allow_origins` dicatat di log saat start, dan `tests/api/test_api.py::test_cors_allows_web_origin_on_claims_endpoint` menguji preflight endpoint `/claims` | Re-deploy API dengan `CORS_ORIGINS=https://<web>.run.app` |
-| 10 | **Registrasi, akun per pengguna, dan reset kata sandi lewat email belum ada** | Halaman login memakai email akun demo tunggal; tautan lupa kata sandi menjelaskan jalur PIC | Sengaja di luar lingkup (single-tenant). Ditambah tabel user + verifikasi email bila produk dikomersialkan |
-| 11 | **Tidak ada paywall/subscription** | Semua fitur terbuka selama demo | Keputusan sadar: paywall tidak menambah nilai penilaian dan menyembunyikan fitur yang dinilai. Model bisnis disampaikan di deck, bukan dikunci di produk |
+| 1 | `backend/data/cache/` belum berisi rekaman di repositori | Mode `cache` dan fallback `auto` hanya bekerja untuk kasus yang pernah dijalankan live di server | Rekam keempat skenario dengan `AI_MODE=live` |
+| 2 | Belum ada **rate limiting** pada endpoint pemicu AI (NFR-06, Should) | Klik berulang dapat menguras kredit Vertex | Mitigasi saat ini: login wajib untuk aksi tulis dan penolakan investigasi ganda (409) |
+| 3 | **Golden-set evaluasi** agen belum ada | Kualitas keputusan tidak diuji regresi saat prompt berubah | 5–10 kasus + skrip pembanding |
+| 4 | Satu akun demo, tanpa pemisahan peran | Setiap sesi berhak menyetujui klaim | Diterima sebagai batasan demo dan dinyatakan di halaman Akun |
+| 5 | Registrasi, akun per pengguna, dan reset kata sandi lewat email belum ada | Login memakai satu akun demo | Di luar lingkup versi hackathon |
+| 6 | Beberapa endpoint operasional belum punya tombol di UI (mis. purge investigasi) | Fitur backend ada tetapi tidak terlihat di demo | Dapat diakses lewat `/api/v1/docs` |
+| 7 | Tidak ada paywall/langganan | Semua fitur terbuka | Keputusan sadar; model bisnis disampaikan di presentasi |
 
-Celah nomor 1, 2, dan 7 adalah **blocking** untuk demo utama; sisanya bersifat penyempurnaan atau dinyatakan terbuka sebagai batasan.
+Deploy Cloud Run sudah berjalan: web di https://claimguard-web-5rzsoa7j3a-et.a.run.app dan API di
+https://claimguard-api-5rzsoa7j3a-et.a.run.app, dengan video sampel di Cloud Storage.

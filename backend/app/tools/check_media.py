@@ -7,7 +7,7 @@ Tiga hal yang paling mudah salah saat menyiapkan rekaman:
 2. `pack_scan.scanned_at` di `shipments.json` tidak sesuai detik scan pada video ->
    klip CCTV menampilkan bagian yang salah, atau investigasi gagal dengan
    `scan_outside_recording` bila selisihnya melebihi durasi rekaman.
-3. Nama resi di `docs/data-dummy-dan-video.md` hanya label urutan; yang benar-benar dipakai
+3. Nama resi di `docs/data-demo.md` hanya label urutan; yang benar-benar dipakai
    API adalah `shipments.id` (UUID).
 
 Pemakaian (dari folder backend/):
@@ -38,7 +38,7 @@ STATUS_OK = "ok"
 STATUS_MISSING = "belum ada"
 STATUS_UNREADABLE = "tidak terbaca"
 
-# Detik di video tempat kejadian penting untuk tiap skenario (docs/data-dummy-dan-video.md §5).
+# Detik di video tempat kejadian penting untuk tiap skenario (lihat docs/data-demo.md).
 # Dipakai `--plan` dan `--scan` bila detik tidak diberikan manual.
 SCENARIO_SECONDS = {"cctv_packing_01": 40, "cctv_packing_02": 30}
 

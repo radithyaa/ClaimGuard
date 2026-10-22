@@ -1,16 +1,18 @@
-# Setup GCP ClaimGuard
+# Setup Google Cloud untuk ClaimGuard
 
-Panduan ini diturunkan dari kode backend yang sudah ada, bukan dari asumsi:
+Panduan ini untuk siapa pun yang ingin menjalankan ClaimGuard di Google Cloud sendiri: membuat
+project, izin, database, bucket, secret, lalu men-deploy backend dan frontend ke Cloud Run.
+Untuk sekadar mencoba aplikasi, cukup buka [Panduan Pengujian](../docs/PANDUAN-PENGUJIAN.md).
 
-| Kebutuhan GCP | Sumber di kode |
+Layanan yang dipakai dan bagian kode yang membutuhkannya:
+
+| Layanan | Dipakai oleh |
 | --- | --- |
-| Vertex AI (Gemini, tanpa API key) | `backend/app/services/gemini_client.py` (`genai.Client(vertexai=True, ...)`), `GOOGLE_GENAI_USE_VERTEXAI` untuk ADK |
-| Cloud Storage + signed URL v4 | `backend/app/services/storage_service.py` (`GCSStorage`, `IAM signBlob`) |
-| Cloud SQL Postgres | `backend/app/db/session.py` (`postgresql+psycopg`), `DATABASE_URL` di `core/config.py` |
-| Secret Manager | `security.py` (password demo, FR-19), password DB |
-| Cloud Run | SRS §10 (dua service, satu instance backend) |
-
-Acuan aturan: `docs/SRS.md` §10 dan §15.2. Kewajiban stack masih menunggu briefing panitia (TOR §5).
+| Vertex AI (Gemini, tanpa API key) | `backend/app/services/gemini_client.py` dan agen ADK |
+| Cloud Storage + signed URL | `backend/app/services/storage_service.py` (video dan klip bukti) |
+| Cloud SQL PostgreSQL | `backend/app/db/session.py` (`DATABASE_URL`) |
+| Secret Manager | kata sandi demo, kunci sesi, URL database |
+| Cloud Run | dua service: `claimguard-api` (satu instance) dan `claimguard-web` |
 
 ---
 
@@ -22,17 +24,17 @@ gcloud auth application-default login     # dipakai SDK Gemini saat dev lokal
 gcloud config set project hackathon-primestep-18
 ```
 
-`.env`, `*.db`, `backend/storage/` sudah di `.gitignore`. **Jangan pernah** menaruh service account key JSON di repo, deck, atau rekaman (TOR §9, NFR-04).
+`.env`, `*.db`, `backend/storage/` sudah di `.gitignore`. **Jangan pernah** menaruh service account key JSON di repo, deck, atau rekaman.
 
 ---
 
-## 1. Yang perlu diberikan PIC GCP ke developer
+## 1. Izin untuk anggota tim yang men-deploy
 
-Jalankan dari akun Owner/PIC:
+Jalankan dari akun pemilik project (Owner):
 
 ```bash
 export PROJECT_ID=hackathon-primestep-18
-./infra/setup-gcp.sh --deployer user:ahzathenation@gmail.com
+./infra/setup-gcp.sh --deployer user:<email-developer>
 ```
 
 Role yang diberikan (minimum untuk `gcloud run deploy --source`):
@@ -54,7 +56,7 @@ Semua role **terikat ke project** dan ber-`--condition=None`. Jangan pakai `role
 
 ---
 
-## 2. Membuat infrastruktur (sekali, oleh PIC)
+## 2. Membuat infrastruktur (sekali)
 
 ```bash
 export PROJECT_ID=hackathon-primestep-18
@@ -118,7 +120,7 @@ Pasang sebagai env var service (bukan di repo). Field kiri = nama di `config.py`
 | `GOOGLE_GENAI_USE_VERTEXAI` | `TRUE` | ya |
 | `GEMINI_MODEL` | `gemini-flash-latest` | verifikasi nama di Vertex |
 | `AI_MODE` | `auto` | default demo |
-| `MIN_CONFIDENCE` | `0.6` | penjaga FR-12 |
+| `MIN_CONFIDENCE` | `0.6` | ambang keyakinan minimum keputusan agen |
 | `PUBLIC_BASE_URL` | URL Cloud Run frontend | untuk `/media` lokal saja |
 
 `DATABASE_URL` berisi password. Jangan tulis literal di skrip yang di-commit. Pakai `--set-secrets` setelah password dipetakan, atau simpan URL lengkap sebagai secret `claimguard-database-url`.
@@ -182,12 +184,12 @@ Flag yang dipakai dan alasannya:
 
 | Flag | Alasan |
 | --- | --- |
-| `--min-instances 1 --max-instances 1` | task registry, event bus SSE, dan scheduler ada di memori proses (NFR-13) |
-| `--no-cpu-throttling` | investigasi berjalan sebagai `asyncio.Task` setelah respons terkirim (SRS §12.3) |
+| `--min-instances 1 --max-instances 1` | task registry, event bus SSE, dan scheduler ada di memori proses |
+| `--no-cpu-throttling` | investigasi berjalan sebagai `asyncio.Task` setelah respons terkirim |
 | `--timeout 3600` | SSE dan investigasi panjang |
 | `--add-cloudsql-instances` | menyediakan socket `/cloudsql/<conn>` yang dipakai `DATABASE_URL` |
 | `--memory 2Gi` | FFmpeg encode ulang + Gemini multimodal |
-| `--allow-unauthenticated` | demo publik; API tetap punya login demo (FR-19) |
+| `--allow-unauthenticated` | demo publik; aksi tulis di API tetap butuh login demo |
 
 `--source` memakai Cloud Build, jadi tidak butuh Docker lokal. Waktu build ±5–8 menit.
 
@@ -201,7 +203,7 @@ export DEMO_PASSWORD="$(gcloud secrets versions access latest --secret=claimguar
 ./infra/deploy-web.sh
 ```
 
-`DEMO_PASSWORD` mengaktifkan tombol **"Coba sebagai juri"** di halaman login. Bila variabel ini kosong, tombol disembunyikan dan juri harus mengetik kata sandi.
+`DEMO_PASSWORD` dipakai tombol **Masuk sebagai juri** di halaman login. Bila kosong, tombol tetap tampil tetapi memakai kata sandi bawaan lokal (`claimguard-demo`), yang ditolak backend cloud. Jadi variabel ini wajib diisi saat deploy ke cloud.
 
 **`NEXT_PUBLIC_*` wajib lewat `--build-arg`, bukan `--set-env-vars`.** Next.js meng-inline nilai `NEXT_PUBLIC_*` ke bundle saat `next build`. Memberikannya sebagai env runtime **tidak berpengaruh sama sekali** — hasilnya frontend akan memanggil `http://localhost:8000`. `deploy-web.sh` sudah menangani ini.
 
@@ -234,11 +236,11 @@ Semua baris di bawah adalah **kegagalan nyata yang pernah terjadi** saat mengerj
 | `Connection refused` di `/cloudsql/...` | SA runtime belum punya `roles/cloudsql.client` | §3 |
 | Gemini 403 saat investigasi | SA runtime belum punya `roles/aiplatform.user` | §3 |
 | `deploy-web.sh` mencetak `GAGAL: API URL tidak ditemukan di bundle` tetapi situs **berjalan normal** | skrip lama memindai `/settings`, yang sekarang 307 → `/login` dan tidak memuat chunk aplikasi | gunakan skrip terbaru (memindai `/login`); verifikasi manual ada di §5.7 |
-| **Juri berhasil login tetapi terlempar kembali ke `/login`** | layout `(dashboard)` memakai hasil render/RSC lama (“belum login”) karena `router.replace()` berjalan sebelum `router.refresh()`; halaman juga belum `force-dynamic` | sudah diperbaiki di kode; lihat SRS §18 v2.5 |
+| **Juri berhasil login tetapi terlempar kembali ke `/login`** | layout `(dashboard)` memakai hasil render/RSC lama (“belum login”) karena `router.replace()` berjalan sebelum `router.refresh()`; halaman juga belum `force-dynamic` | sudah diperbaiki di kode |
 
-### 5.6 Status prasyarat
+### 5.6 Urutan deploy
 
-`deploy-api.sh` akan memperingatkan bila `backend/app/main.py` belum ada. Tanpa file itu, container gagal start karena entrypoint menjalankan `app.main:app`. Urutan yang benar: API → web → **set CORS API ke origin web** → uji login.
+API → web → pastikan `CORS_ORIGINS` API berisi alamat web → uji login.
 
 ### 5.7 Verifikasi setelah deploy (wajib)
 
@@ -284,97 +286,33 @@ Pindai **`/login`**, bukan `/settings`: halaman dashboard mengembalikan 307 dan 
 
 ### 5.8 Kredensial demo
 
-Satu akun untuk admin dan juri (FR-19):
+Satu akun untuk admin dan juri:
 
-| Untuk | Email (label) | Kata sandi |
-| --- | --- | --- |
-| Admin / juri | `admin@claimguard.demo` | secret `claimguard-demo-password` |
+| Email | Kata sandi |
+| --- | --- |
+| `admin@claimguard.demo` | `juri2026` (isi secret `claimguard-demo-password` saat ini) |
 
-Email hanya label tampilan; backend memverifikasi kata sandi saja. Untuk demo, arahkan juri ke tombol **"Coba sebagai juri"** agar tidak perlu mengetik. Mengganti kata sandi:
+Email hanya label tampilan; backend memverifikasi kata sandi saja. Juri cukup menekan tombol
+**Masuk sebagai juri**, yang mengisi kedua kolom lalu langsung masuk.
+
+Mengganti kata sandi:
 
 ```bash
 printf 'kata-sandi-baru' | gcloud secrets versions add claimguard-demo-password --data-file=-
-./infra/deploy-api.sh --image                       # API memakai secret terbaru
-DEMO_PASSWORD=kata-sandi-baru ./infra/deploy-web.sh # tombol juri ikut berubah (perlu build ulang)
+
+# API memakai versi secret terbaru (revisi baru, image dan env lain tidak berubah)
+gcloud run services update claimguard-api --region asia-southeast2 \
+  --update-secrets DEMO_PASSWORD=claimguard-demo-password:latest
+
+# Tombol juri ikut berubah (butuh build ulang frontend)
+DEMO_PASSWORD=kata-sandi-baru ./infra/deploy-web.sh
 ```
+
+Kata sandi ini ikut terbaca di kode browser, jadi hanya untuk akun demo dengan data simulasi.
 
 ---
 
-## 8. ~~Auto-deploy dari GitHub~~ (tidak dipakai)
-
-Auto-deploy lewat GitHub Actions **sudah dihapus** (`.github/workflows/deploy.yml`). Ia
-menuntut service account deployer terpisah, Workload Identity Federation, dan satu set role
-tambahan — beban administrasi yang tidak sepadan untuk demo ini. Deploy kini **manual**:
-
-```bash
-./infra/deploy-api.sh     # API dulu (CORS_ORIGINS = URL web)
-./infra/deploy-web.sh     # lalu web (API_URL = URL API)
-```
-
-Jalankan dari mesin PIC yang punya role di §1. Bagian 8.1–8.4 di bawah hanya dipertahankan
-sebagai catatan bila auto-deploy ingin dihidupkan lagi.
-
-### 8.1 Siapkan IAM (sekali, oleh PIC, hanya bila auto-deploy dihidupkan lagi)
-
-```bash
-# Butuh GitHub CLI + `gh auth login` (dipakai untuk membaca repository_id).
-export PROJECT_ID=hackathon-primestep-18
-./infra/setup-gcp.sh --github radithyaa/ClaimGuard
-
-# Tanpa gh: ambil angka `id` dari https://api.github.com/repos/radithyaa/ClaimGuard
-REPO_ID=<angka> ./infra/setup-gcp.sh --github radithyaa/ClaimGuard
-```
-
-Yang dibuat:
-
-| Resource | Isi |
-| --- | --- |
-| Service account | `claimguard-github-deployer` |
-| WIF pool/provider | `projects/<proj>/locations/global/workloadIdentityPools/github/providers/github` |
-| Attribute condition | `assertion.repository_id == <id repo> && assertion.ref == 'refs/heads/main'` |
-| Role deployer | `run.admin`, `cloudbuild.builds.editor`, `artifactregistry.admin`, `serviceusage.serviceUsageAdmin`, `cloudsql.client`, `storage.objectAdmin`, `secretmanager.secretAccessor`, `aiplatform.user`, `logging.viewer`, `viewer` |
-| Role tambahan | `iam.serviceAccountUser` **pada** `claimguard-run` dan `claimguard-web` (wajib untuk `--service-account`), `iam.workloadIdentityUser` pada SA deploy |
-
-Repositori lain (fork) tidak bisa memakai provider ini: `repository_id` ikut dicek, bukan
-hanya nama `owner/repo`. Jangan menambahkan `roles/editor` atau `roles/owner`.
-
-### 8.2 Variable di GitHub
-
-Settings > Secrets and variables > Actions > **Variables** (bukan Secrets — tidak ada nilai rahasia):
-
-| Variable | Nilai |
-| --- | --- |
-| `GCP_PROJECT_ID` | `hackathon-primestep-18` |
-| `GCP_REGION` | `asia-southeast2` (opsional; default script) |
-| `GCP_WORKLOAD_IDENTITY_PROVIDER` | dicetak `setup-gcp.sh --github` |
-| `GCP_SERVICE_ACCOUNT` | `claimguard-github-deployer@<project>.iam.gserviceaccount.com` |
-| `CORS_ORIGINS` | `["https://claimguard-web-xxx.a.run.app"]` untuk API (`deploy-api.sh`); kosongkan bila belum ada |
-
-### 8.3 Urutan deploy pertama
-
-`deploy-web.sh` membutuhkan `API_URL`, dan workflow mengambilnya dari service `claimguard-api`.
-Jadi sekali sebelum mengandalkan CI:
-
-```bash
-./infra/setup-gcp.sh --create-infra          # bila belum
-# buat claimguard-session-secret dan claimguard-database-url (§5.1)
-./infra/deploy-api.sh
-```
-
-Setelah API punya URL, isi `CORS_ORIGINS` = URL web di variable GitHub. Untuk deploy pertama,
-URL web bisa diambil dari log job `web` setelah selesai.
-
-### 8.4 Batasan
-
-| Hal | Artinya |
-| --- | --- |
-| Build 5–15 menit per job | Dua build paralel (API + web) memakai kuota Cloud Build bersamaan |
-| Kode rusak tetap ter-deploy | Workflow ini deploy, bukan gate. Tambahkan test/lint sebagai job terpisah bila ingin memblokir |
-| Server web bisa 500 di halaman yang memanggil API saat prerender | `NEXT_PUBLIC_API_BASE_URL` kosong saat `next build` -> `localhost:8000`; workflow selalu mengisinya lewat `API_URL` |
-
----
-
-## 8. Verifikasi
+## 6. Verifikasi infrastruktur
 
 ```bash
 ./infra/setup-gcp.sh --verify
@@ -386,16 +324,16 @@ Uji Vertex tanpa deploy (memakai ADC lokal):
 
 ```bash
 cd backend
-python -c "from google import genai; c=genai.Client(vertexai=True, project='hackathon-primestep-18', location='global'); print(c.models.generate_content(model='gemini-flash-latest', contents='ping').text)"
+python -c "from google import genai; c=genai.Client(vertexai=True, project='hackathon-primestep-18', location='global'); print(c.models.generate_content(model='gemini-2.5-flash', contents='ping').text)"
 ```
 
 Kalau perintah di atas 403, role `aiplatform.user` atau billing belum aktif.
 
 ---
 
-## 9. Yang tetap jalan tanpa GCP
+## 7. Menjalankan tanpa Google Cloud
 
-Dev lokal tidak butuh apa pun dari dokumen ini:
+Menjalankan di komputer sendiri tidak membutuhkan apa pun dari dokumen ini:
 
 ```bash
 cd backend
@@ -403,4 +341,4 @@ python -m venv .venv && .venv/bin/pip install -e ".[dev]"
 .venv/bin/python -m pytest -q
 ```
 
-`STORAGE_BACKEND=local` + `DATABASE_URL=sqlite:///./claimguard.db` + cache rekam-putar (`AI_MODE=cache`) membuat seluruh alur agen berjalan tanpa billing. Ini jalur cadangan untuk skenario E (SRS §13).
+`STORAGE_BACKEND=local` + `DATABASE_URL=sqlite:///./claimguard.db` + cache rekam-putar (`AI_MODE=cache`) membuat seluruh alur agen berjalan tanpa billing. Ini juga jalur cadangan bila Gemini tidak tersedia.

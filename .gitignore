@@ -15,3 +15,6 @@ node_modules/
 backend/data/samples/
 backend/env.cloud.yaml
 *.egg-info/
+
+# Berkas panduan agen AI yang dibuat ulang otomatis oleh `next dev`
+frontend/AGENTS.md

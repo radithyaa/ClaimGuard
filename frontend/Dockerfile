@@ -22,9 +22,9 @@ COPY . .
 # Di-inline ke bundle browser saat build.
 ARG NEXT_PUBLIC_API_BASE_URL
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
-# Kata sandi untuk tombol "Coba sebagai juri" di halaman login. Kosongkan untuk
-# menyembunyikan tombol tersebut. Nilai ini terbaca publik, sama seperti demo password
-# backend yang juga dibagikan kepada penilai.
+# Kata sandi untuk tombol "Masuk sebagai juri" di halaman login. Kosong = kata sandi
+# bawaan backend lokal (claimguard-demo). Nilai ini terbaca publik, sama seperti demo
+# password backend yang juga dibagikan kepada penilai.
 ARG NEXT_PUBLIC_DEMO_PASSWORD
 ENV NEXT_PUBLIC_DEMO_PASSWORD=$NEXT_PUBLIC_DEMO_PASSWORD
 ENV NEXT_TELEMETRY_DISABLED=1
