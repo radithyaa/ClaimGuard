@@ -32,10 +32,11 @@ export function LoginForm() {
   const [emailNotice, setEmailNotice] = useState<string | null>(null);
 
   /**
-   * Kredensial tombol demo, di-inline saat build lewat `NEXT_PUBLIC_DEMO_PASSWORD`.
-   * Bila kosong, tombol disembunyikan daripada menebak kata sandi.
+   * Kredensial tombol juri, di-inline saat build lewat `NEXT_PUBLIC_DEMO_PASSWORD`.
+   * Bila kosong, jatuh ke kata sandi default backend lokal (`DEMO_PASSWORD` di core/config.py)
+   * agar tombol tetap tersedia saat pengembangan.
    */
-  const demoPassword = process.env.NEXT_PUBLIC_DEMO_PASSWORD;
+  const demoPassword = process.env.NEXT_PUBLIC_DEMO_PASSWORD || "claimguard-demo";
   const canDemo = !process.env.NEXT_PUBLIC_HIDE_DEMO_LOGIN && Boolean(demoPassword);
 
   async function signIn(passwordValue: string, mode: "form" | "demo") {
@@ -209,7 +210,7 @@ export function LoginForm() {
               className="h-11 w-full rounded-lg border-[#d5dce3] bg-white text-sm font-semibold text-[#1e2a36]"
             >
               <Play className="size-3.5" aria-hidden />
-              {pending === "demo" ? "Masuk sebagai juri…" : "Isi akun demo & masuk"}
+              {pending === "demo" ? "Masuk sebagai juri…" : "Masuk sebagai juri"}
             </Button>
           )}
 

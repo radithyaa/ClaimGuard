@@ -10,6 +10,8 @@ __pycache__/
 .ruff_cache/
 node_modules/
 .next/
+# Video sampel tidak di-commit (biner besar). Untuk server deployment, unggah sekali ke
+# bucket: infra/upload-samples.sh (atau `gcloud storage cp backend/data/samples/* gs://BUCKET/samples/`).
 backend/data/samples/
 backend/env.cloud.yaml
 *.egg-info/

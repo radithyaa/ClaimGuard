@@ -23,7 +23,10 @@ async def reset(user: User) -> dict:
 
 
 @router.post("/demo/scenario/{name}", response_model=StartInvestigationOut, status_code=202)
-async def scenario(name: Literal["lost", "damaged", "return_fraud", "wrong_item_seller"], user: User) -> StartInvestigationOut:
+async def scenario(
+    name: Literal["lost", "damaged", "needs_evidence", "wrong_item_seller"],
+    user: User,
+) -> StartInvestigationOut:
     """Menandai anomali resi skenario (aturan monitoring yang sama) lalu memulai investigasi."""
     with session_scope() as db:
         shipment = ship_repo.get_by_tracking(db, demo_data.scenario_tracking_number(name))

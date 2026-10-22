@@ -6,7 +6,7 @@ import { mockClaimApprove, mockClaimCreate, mockClaimGet, mockClaimReject, mockC
 import { mockBuyerRequest, mockCancel, mockPause, mockRunsReset, mockStart, mockView } from "./investigation";
 
 // Skenario demo -> resi mock (backend: field "scenario" di shipments.json)
-const SCENARIO_SHIPMENT: Record<string, string> = { lost: "shp-001", damaged: "shp-002", return_fraud: "shp-003", wrong_item_seller: "shp-011" };
+const SCENARIO_SHIPMENT: Record<string, string> = { lost: "shp-001", damaged: "shp-002", needs_evidence: "shp-003", wrong_item_seller: "shp-011" };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 

@@ -16,7 +16,7 @@ Fitur yang memakai video:
 Video CCTV **tidak** dipotong per resi: satu rekaman gudang melayani beberapa resi, dan klip
 dihitung dari `scanned_at - recorded_start`.
 
-## 2. Lima berkas yang harus ada (data demo)
+## 2. Tujuh berkas yang harus ada (data demo)
 
 Jalankan dari `backend/`:
 
@@ -28,14 +28,34 @@ Outputnya menyebut berkas, resi pemakainya, dan **detik penting** yang harus ter
 
 | Berkas | Dipakai resi (skenario) | Detik penting |
 | --- | --- | --- |
-| `cctv_packing_01.mp4` | `JNE0012345678` (A/lost), `JT7788990011` (B/damaged), `SCP5566778899` (C1/return_fraud) | **40** — scan resi masuk kardus |
-| `unboxing_vas.mp4` | `JT7788990011` (B/damaged) | adegan kerusakan |
-| `unboxing_earphone.mp4` | `SCP5566778899` (C1/return_fraud) | adegan isi paket |
+| `cctv_packing_01.mp4` | `JNE0012345678` (A/lost), `SCP5566778899` (C1/return_fraud), resi lain tanpa skenario | **40** — scan resi masuk kardus |
 | `cctv_packing_02.mp4` | `SCP8899770011` (C2/wrong_item_seller) | **30** — kaos merah M masuk kardus |
+| `inhaler_packing.mp4` | `JT7788990011` (B/damaged) | **33** — inhaler dibungkus, resi J&T dipindai (di video: ±00:33–00:48) |
+| `unboxing_vas.mp4` | (rekaman cadangan; tidak lagi dirujuk `shipments.json`) | adegan kerusakan |
+| `unboxing_earphone.mp4` | `SCP5566778899` (C1/return_fraud) | adegan isi paket |
 | `unboxing_kaos_hitam.mp4` | `SCP8899770011` (C2/wrong_item_seller) | adegan kaos merah M |
+| `inhaler_unpacking.mp4` | `JT7788990011` (B/damaged) | adegan pembukaan kiriman inhaler |
 
 Nama berkas boleh berbeda huruf besar/kecil dan ekstensi (`.mov`, `.mkv`, `.m4v` juga dikenali).
-Berkas tidak di-commit (`.gitignore`: `backend/data/samples/`).
+Berkas tidak di-commit (`.gitignore`: `backend/data/samples/`) dan tidak ikut image
+(`backend/.dockerignore`).
+
+### 2.1 Server deployment (Cloud Run + GCS)
+
+Image backend **tidak membawa** `data/samples/`. Di cloud, `media_assets.uri` berbentuk
+`gs://<BUCKET>/samples/<file>`, jadi berkas harus ada di bucket **dan** DB harus di-seed ulang
+supaya baris media menunjuk ke sana:
+
+```bash
+export PROJECT_ID=hackathon-primestep-18
+./infra/upload-samples.sh               # rsync backend/data/samples -> gs://<BUCKET>/samples/
+./infra/upload-samples.sh --check       # pastikan semua berkas yang diminta shipments.json ada
+curl -X POST "$API_URL/api/v1/demo/reseed" -H "Cookie: cg_session=$TOKEN"
+```
+
+Seed mengukur durasi asli dari GCS (bukan `duration_sec` di JSON), sehingga klip CCTV tidak
+pernah meminta area di luar rekaman. Bila berkas belum ada di bucket, `clip_cctv_video` gagal
+dengan `file media tidak ditemukan` dan `analyze_media` dengan `media_missing`.
 
 ## 3. Menaruh rekaman di DB dummy
 
@@ -47,6 +67,7 @@ Berkas tidak di-commit (`.gitignore`: `backend/data/samples/`).
    # atau tanpa menutup proses API:
    #   POST /api/v1/demo/reseed
    ```
+   Di server deployment (video ada di GCS), pakai `./infra/upload-samples.sh` dulu — lihat §2.1.
 
 3. Periksa kesiapan:
 
@@ -54,7 +75,7 @@ Berkas tidak di-commit (`.gitignore`: `backend/data/samples/`).
    .venv/bin/python -m app.tools.check_media
    ```
 
-   Target: `5/5 rekaman siap`. Berkas yang belum ada dilaporkan di `missing_media`.
+   Target: `7/7 rekaman siap`. Berkas yang belum ada dilaporkan di `missing_media`.
 
 > **Durasi diukur, bukan dipercaya.** `duration_sec` di `shipments.json` hanya dipakai bila video
 > dibuat sintetis (`--synthetic`). Video asli yang lebih pendek dari angka di JSON akan memakai

@@ -128,6 +128,17 @@ MODEL_CALLBACKS = {
 
 # ---------- penjaga deterministik ----------
 
+def _has_unboxing(shipment_id: str | None) -> bool:
+    """Apakah resi punya video unboxing pembeli. Tanpa shipment_id: anggap ada (penjaga tidak aktif)."""
+    if not shipment_id:
+        return True
+    from app.db.session import session_scope  # impor lambat: hindari siklus
+    from app.repositories import shipments as ship_repo
+
+    with session_scope() as db:
+        return any(m.kind == "unboxing" for m in ship_repo.list_media_for_shipment(db, shipment_id))
+
+
 def enforce_min_confidence(callback_context) -> None:
     """FR-12: ambang confidence ditegakkan kode, bukan prompt."""
     raw = callback_context.state.get("evaluation")
@@ -137,6 +148,19 @@ def enforce_min_confidence(callback_context) -> None:
     from app.services.settings_service import get_runtime  # impor lambat: hindari siklus
 
     threshold = get_runtime().min_confidence
+    if ev.decision == "fraud_suspect" and not _has_unboxing(callback_context.state.get("shipment_id")):
+        # CCTV packing hanya membuktikan isi saat diserahkan; menuduh pembeli butuh video unboxing.
+        data = ev.model_dump()
+        data.update(
+            decision="needs_evidence",
+            missing_evidence=data.get("missing_evidence") or [
+                "video unboxing utuh tanpa jeda sejak paket masih tersegel"],
+            reason=f"{ev.reason} (Tanpa video unboxing pembeli, dugaan kecurangan belum dapat "
+                   f"dibuktikan; perlu bukti tambahan.)",
+        )
+        callback_context.state["evaluation"] = data
+        callback_context.state["guard_applied"] = True
+        return
     if ev.decision != "needs_evidence" and ev.confidence < threshold:
         data = ev.model_dump()
         data.update(

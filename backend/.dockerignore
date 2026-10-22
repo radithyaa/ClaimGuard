@@ -3,6 +3,8 @@
 *.db
 *.db-*
 storage/
+# Video sampel TIDAK ikut image: di cloud dibaca dari bucket GCS (key samples/),
+# lihat infra/upload-samples.sh. Hanya dipakai saat STORAGE_BACKEND=local.
 data/samples/
 tests/
 **/__pycache__/

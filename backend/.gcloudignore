@@ -1,0 +1,27 @@
+# Berkas yang TIDAK perlu di-upload oleh `gcloud run deploy --source` / Cloud Build.
+# Tanpa berkas ini gcloud memakai .gitignore, tetapi isinya tidak lengkap (cache tes, database
+# demo, dan video sampel tetap terkirim ~60-120 MB setiap deploy -> upload lambat).
+# Yang WAJIB ikut: app/, data/mock/, data/cache/, requirements.lock, Dockerfile.
+.gcloudignore
+
+# Python & venv
+.venv/
+**/__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Database & penyimpanan lokal (di cloud memakai Cloud SQL + GCS)
+*.db
+*.db-*
+storage/
+data/samples/
+
+# Konfigurasi rahasia lokal
+.env
+env.cloud.yaml
+
+# Tes tidak dibutuhkan untuk image runtime
+tests/

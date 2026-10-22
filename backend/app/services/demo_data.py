@@ -41,7 +41,7 @@ from app.services import policy_extractor, storage_service, video_service
 from app.services.settings_service import ensure_thresholds
 
 log = logging.getLogger(__name__)
-SCENARIOS = ("lost", "damaged", "return_fraud", "wrong_item_seller")
+SCENARIOS = ("lost", "damaged", "needs_evidence", "wrong_item_seller")
 # urutan hapus mengikuti foreign key
 _RESET_ORDER = (InvestigationEvent, Evidence, Claim, Investigation, Anomaly, PackScanLog,
                 TrackingEvent, MediaAsset, Shipment, AuditLog)
@@ -54,10 +54,30 @@ def _ts(value: str) -> datetime:
     return datetime.fromisoformat(value)
 
 
+def mock_manifest_path() -> Path:
+    return Path(get_settings().mock_data_dir) / "shipments.json"
+
+
+def mock_revision() -> str:
+    """Sidik jari berkas manifest (mtime+ukuran): berubah saat `shipments.json` diganti."""
+    st = mock_manifest_path().stat()
+    return f"{st.st_mtime_ns}:{st.st_size}"
+
+
 @lru_cache
+def _load_mock_cached(key: tuple[str, str]) -> dict[str, Any]:
+    return json.loads(Path(key[0]).read_text(encoding="utf-8"))
+
+
 def load_mock() -> dict[str, Any]:
-    path = Path(get_settings().mock_data_dir) / "shipments.json"
-    return json.loads(path.read_text(encoding="utf-8"))
+    """Manifest demo, dibaca ulang bila berkasnya berubah.
+
+    Cache dikunci pada path + mtime/ukuran, bukan sekali per proses: container Cloud Run dengan
+    `min-instances=1` tidak restart saat `POST /demo/reseed`, sehingga cache permanen membuat seed
+    ulang tetap memakai data lama sampai instance didaur ulang.
+    """
+    path = mock_manifest_path()
+    return _load_mock_cached((str(path.resolve()), mock_revision()))
 
 
 def scenario_tracking_number(name: str) -> str:
@@ -213,7 +233,8 @@ def reset_and_seed(db: Session, *, synthetic_media: bool = False) -> dict[str, A
         ship = by_tracking[row["tracking_number"]]
         if scan := row.get("pack_scan"):
             db.add(PackScanLog(shipment_id=ship.id, scanned_at=_ts(scan["scanned_at"]),
-                               cctv_media_id=media_ids.get(scan.get("cctv", ""))))
+                               cctv_media_id=media_ids.get(scan.get("cctv", "")),
+                               packed_items_json=list(scan.get("packed_items") or [])))
     db.flush()
     thresholds = ensure_thresholds(db)
     if missing:

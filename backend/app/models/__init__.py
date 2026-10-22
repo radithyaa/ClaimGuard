@@ -114,6 +114,9 @@ class PackScanLog(Base):
     shipment_id: Mapped[str] = mapped_column(ForeignKey("shipments.id"), index=True)
     scanned_at: Mapped[datetime] = mapped_column(UTCDateTime())
     cctv_media_id: Mapped[str | None] = mapped_column(ForeignKey("media_assets.id"), nullable=True)
+    # Barang yang dikemas penjual sesuai urutan waktu (rekaman CCTV). Menjadi pembanding klaim
+    # isi paket; kosong bila operator tidak mencatatnya.
+    packed_items_json: Mapped[list[str]] = mapped_column(Json, default=list)
 
 
 class Anomaly(Base):
@@ -140,7 +143,8 @@ class Investigation(Base):
     status: Mapped[str] = mapped_column(String(16), default="queued", index=True)
     # claim_drafted | needs_evidence | fraud_suspect | seller_error
     outcome: Mapped[str | None] = mapped_column(String(16), nullable=True)
-    verdict: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Ringkasan satu frasa dari Evaluator (bisa lebih panjang dari kode status).
+    verdict: Mapped[str | None] = mapped_column(String(256), nullable=True)
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     decision_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -12,6 +12,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /srv
+# Dependensi di lapisan sendiri: selama requirements.lock tidak berubah, Cloud Build memakai
+# cache lapisan ini, sehingga deploy yang hanya mengubah kode ~1 menit (bukan 4 menit pip install).
 COPY requirements.lock .
 RUN pip install -r requirements.lock
 

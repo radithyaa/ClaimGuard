@@ -35,14 +35,14 @@ Pembaca: Backend B (seed), Frontend B (rekaman video), Backend A (prompt & cache
 | Media (video) | 5 | ±7 menit |
 | Kebijakan kurir | 3 | — |
 | Anomali yang muncul saat scan | 4 (+1 opsional, C2) | — |
-| File yang direkam tim | 5 | 420 detik |
+| File yang direkam tim | 7 | 420 detik |
 
 ### Peta skenario → media → keputusan
 
 | Resi | Skenario | Media yang dipakai | Keputusan akhir | Klaim ke kurir | Resi anomali |
 | --- | --- | --- | --- | --- | --- |
 | `JNE0012345678` | A — paket hilang | CCTV-01 detik 40 | `claim` | ✅ JNE | SLA |
-| `JT7788990011` | B — barang rusak | CCTV-01 detik 95 + unboxing inhaler | `claim` | ✅ J&T | Laporan rusak |
+| `JT7788990011` | B — barang rusak | CCTV `inhaler_packing` detik 33 + `inhaler_unpacking.mp4` | `claim` (damaged) | ✅ J&T | Laporan rusak |
 | `SCP5566778899` | C1 — retur curang | CCTV-01 detik 150 + unboxing kaos | `fraud_suspect` | ❌ | Sengketa retur |
 | `SCP8899770011` | C2 — penjual salah kirim | CCTV-02 detik 30 + unboxing kaos hitam | `seller_error` | ❌ | Sengketa retur |
 | `JNE0099887766` | D — tertahan tanpa CCTV | tidak ada | `needs_evidence` | ❌ | SLA |
@@ -131,17 +131,23 @@ Kolom `A/B/C1/C2/D` hanya penanda dokumen, tidak ada di database.
 **Lengkap 32 baris.** Resi 11 (`JNE0011223344`, status `created`) sengaja tidak punya event —
 dipakai untuk menguji empty state `ShipmentTimeline`.
 
-### 3.3 `media_assets` — 5 baris
+### 3.3 `media_assets` — 7 baris
 
 URI dibentuk `_media_uri(file)` → `local://samples/<file>` atau `gs://<BUCKET>/samples/<file>`.
 
 | key | kind | file | recorded_start | duration_sec | pemilik (shipment) | description |
 | --- | --- | --- | --- | --- | --- | --- |
-| `cctv_packing_01` | cctv | `cctv_packing_01.mp4` | 17 Okt 01:00:00 | 180 | `null` (dipakai A, B, C1) | CCTV meja packing 1, gudang Bandung |
+| `cctv_packing_01` | cctv | `cctv_packing_01.mp4` | 17 Okt 01:00:00 | 180 | `null` (dipakai A, C1, dan resi tanpa skenario) | CCTV meja packing 1, gudang Bandung |
 | `cctv_packing_02` | cctv | `cctv_packing_02.mp4` | 17 Okt 01:03:00 | 120 | `null` (dipakai C2) | CCTV meja packing 2, gudang Bandung |
-| `unboxing_inhaler` | unboxing | `unboxing_inhaler.mp4` | `null` | 45 | `JT7788990011` | Video unboxing pembeli: inhaler, kardus penyok di sudut, bubble wrap sobek |
-| `unboxing_kaos` | unboxing | `unboxing_kaos.mp4` | `null` | 40 | `SCP5566778899` | Video unboxing pembeli: kaos merah diterima, pesanan tertulis putih ukuran M |
-| `unboxing_kaos_hitam` | unboxing | `unboxing_kaos_hitam.mp4` | `null` | 35 | `SCP8899770011` | Video unboxing pembeli: kaos merah ukuran M diterima, pesanan tertulis hitam ukuran L |
+| `inhaler_packing` | cctv | `inhaler_packing.mp4` | 17 Okt 01:00:00 | 63 | `null` (dipakai B) | CCTV meja packing: inhaler dibungkus, dipindai, dan dimasukkan ke kardus J&T |
+| `unboxing_vas` | unboxing | `unboxing_vas.mp4` | `null` | 45 | `null` | Video unboxing pembeli: vas keramik (rekaman cadangan, tidak dirujuk resi) |
+| `unboxing_earphone` | unboxing | `unboxing_earphone.mp4` | `null` | 40 | `SCP5566778899` | Video unboxing pembeli: earphone |
+| `unboxing_kaos_hitam` | unboxing | `unboxing_kaos_hitam.mp4` | `null` | 35 | `SCP8899770011` | Video unboxing pembeli: kaos biru doubel diterima, pesanan kaos biru tua (navy) |
+| `inhaler_unpacking` | unboxing | `inhaler_unpacking.mp4` | `null` | 19 | `JT7788990011` | Video unboxing pembeli: kiriman inhaler J&T dibuka dan dikeluarkan dari kemasan |
+
+> `duration_sec` di JSON hanya perkiraan: seed mengukur durasi asli berkas dengan FFmpeg
+> (`inhaler_packing.mp4` di repo ±63 detik, bukan 45). Buffer klip mungkin terpotong di mulut
+> video dan itu wajar.
 
 Catatan:
 
@@ -157,7 +163,7 @@ Catatan:
 | shipment | cctv_media | scanned_at | offset ke `recorded_start` |
 | --- | --- | --- | --- |
 | A `JNE0012345678` | `cctv_packing_01` | 17 Okt 01:00:40 | **detik 40** |
-| B `JT7788990011` | `cctv_packing_01` | 17 Okt 01:01:35 | **detik 95** |
+| B `JT7788990011` | `inhaler_packing` | 17 Okt 01:00:33 | **detik 33** |
 | C1 `SCP5566778899` | `cctv_packing_01` | 17 Okt 01:02:30 | **detik 150** |
 | C2 `SCP8899770011` | `cctv_packing_02` | 17 Okt 01:03:30 | **detik 30** |
 
@@ -226,7 +232,7 @@ transfer-batas SLA, laporan kerusakan, sengketa retur.
 | # | Resi | code | case_type | severity | reason (ringkas) | Bukti yang diharapkan |
 | --- | --- | --- | --- | --- | --- | --- |
 | 1 | A | `SLA_EXCEEDED` | `lost` | `medium` | Melewati SLA ±2,4 hari; status terakhir "Tiba di hub transit" di Semarang | CCTV-01 detik 40 |
-| 2 | B | `BUYER_REPORTED_DAMAGE` | `damaged` | `medium` | matched `retak` | CCTV-01 detik 95 + unboxing inhaler |
+| 2 | B | `BUYER_REPORTED_DAMAGE` | `damaged` | `medium` | matched `rusak` | CCTV `inhaler_packing` detik 33 + `inhaler_unpacking.mp4` |
 | 3 | C1 | `RETURN_DISPUTE` | `return_fraud` | `high` | matched `berbeda` | CCTV-01 detik 150 + unboxing kaos |
 | 4 | D | `SLA_EXCEEDED` | `lost` | `high` | Melewati SLA ≥ 3 hari | **tidak ada** → `needs_evidence` |
 | 5 | C2 | `RETURN_DISPUTE` | `return_fraud` | `high` | matched `berbeda`; hanya terbentuk jika `sla_deadline` = 25 Okt | CCTV-02 detik 30 + unboxing kaos hitam |

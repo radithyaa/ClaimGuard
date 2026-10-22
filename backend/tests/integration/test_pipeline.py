@@ -150,3 +150,20 @@ async def test_low_confidence_forces_needs_evidence_and_skips_drafter(ai, seeded
     assert out.outcome == "needs_evidence"
     assert out.guard_applied and out.draft is None
     assert models["drafter"].calls == 0
+
+
+async def test_fraud_suspect_without_unboxing_becomes_needs_evidence(ai, seeded, db):
+    # Kasus seeded hanya punya CCTV: packing lengkap belum cukup untuk menuduh pembeli.
+    models = live_models(seeded, db)
+    models["evaluator"] = ScriptedLlm(model="evaluator", steps=[lambda: txt({
+        "decision": "fraud_suspect", "confidence": 0.9, "verdict": "klaim pembeli tidak sesuai packing",
+        "reason": "CCTV detik ke-10 menunjukkan barang dikemas.", "evidence_ids": clip_ids(db),
+    })])
+    models["drafter"] = failing("drafter")
+
+    _, state = await run_pipeline(seeded, models)
+
+    out = persist_outcome(state)
+    assert out.outcome == "needs_evidence" and out.guard_applied
+    assert out.evaluation.missing_evidence
+    assert models["drafter"].calls == 0

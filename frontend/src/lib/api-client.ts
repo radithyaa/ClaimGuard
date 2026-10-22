@@ -97,7 +97,7 @@ async function request<T>(method: string, path: string, opts: { query?: Query; b
   return (res.status === 204 ? undefined : await res.json()) as T;
 }
 
-export type DemoScenario = "lost" | "damaged" | "return_fraud" | "wrong_item_seller";
+export type DemoScenario = "lost" | "damaged" | "needs_evidence" | "wrong_item_seller";
 
 export interface ShipmentQuery extends Query {
   status?: string;

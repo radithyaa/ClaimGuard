@@ -49,7 +49,7 @@ class TestSeedUsesRealDuration:
             s.commit()
         assert duration == pytest.approx(40, abs=0.5)
         # Berkas yang belum ditaruh dilaporkan, bukan diajukan dengan metadata palsu.
-        assert "unboxing_vas.mp4" in report["missing_media"]
+        assert "inhaler_unpacking.mp4" in report["missing_media"]
 
     def test_scan_outside_recording_is_reported(self, tmp_path, cctv_video, monkeypatch):
         from app.tools import check_media
@@ -62,7 +62,7 @@ class TestSeedUsesRealDuration:
         checks = {c.key: c for c in check_media.check_media(samples_dir=tmp_path)}
         assert checks["cctv_packing_01"].status == check_media.STATUS_OK
         assert "scan_outside_recording" in checks["cctv_packing_01"].note
-        assert checks["unboxing_vas"].status == check_media.STATUS_MISSING
+        assert checks["inhaler_unpacking"].status == check_media.STATUS_MISSING
 
     def test_scan_offsets_follow_recorded_start(self):
         from app.tools import check_media

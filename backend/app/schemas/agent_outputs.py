@@ -7,6 +7,9 @@ from pydantic import BaseModel, Field
 CaseType = Literal["lost", "damaged", "return_fraud"]
 MediaFocus = Literal["packing", "damage", "consistency"]
 Decision = Literal["claim", "needs_evidence", "fraud_suspect", "seller_error"]
+# Jenis bukti yang bisa diminta ulang dari pembeli; dipakai pada `Evaluation.missing_evidence`
+# dan untuk menanyakan langsung apakah bukti itu sudah dimiliki kasus (get_case_context).
+EvidenceKind = Literal["unboxing_video", "packaging_photo", "resi_photo", "invoice"]
 
 
 class TimestampEvidence(BaseModel):
@@ -49,7 +52,13 @@ class Evaluation(BaseModel):
     reason: str = Field(description="Alasan keputusan dalam bahasa Indonesia sederhana, merujuk bukti")
     evidence_ids: list[str] = Field(default_factory=list, description="Evidence yang mendukung")
     missing_evidence: list[str] = Field(
-        default_factory=list, description="Bukti yang kurang bila decision=needs_evidence"
+        default_factory=list, description="Isi bila decision=needs_evidence atau claim dengan confidence "
+        "rendah: bukti yang masih kurang untuk memastikan siapa pihak yang bertanggung jawab"
+    )
+    missing_evidence_kinds: list[EvidenceKind] = Field(
+        default_factory=list,
+        description="Versi terstruktur dari missing_evidence. Tulis HANYA jenis bukti yang belum dimiliki "
+        "kasus (lihat daftar di get_case_context); kosongkan bila bukti sudah cukup atau tidak relevan",
     )
 
 

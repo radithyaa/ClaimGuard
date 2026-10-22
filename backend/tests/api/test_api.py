@@ -19,7 +19,7 @@ from app.services import demo_data, investigation_runner, monitoring
 from tests.integration.test_pipeline import ScriptedLlm, clip_ids, live_models, txt
 
 LOST = "JNE0012345678"
-SELLER = "SCP8899770011"  # C2: penjual salah kirim
+SELLER = "SCP4455667788"  # C: bukan salah kirim — resi ini dipakai menguji pagar kesimpulan
 
 
 @pytest.fixture(scope="session")
@@ -35,12 +35,12 @@ async def client(db, storage, samples_dir, ai, monkeypatch) -> AsyncGenerator[ht
     s = get_settings()
     monkeypatch.setattr(s, "sample_media_dir", str(samples_dir))
     monkeypatch.setattr(s, "storage_local_root", str(storage.root))
+    ai["value"] = "cache"  # kebijakan kurir dari fallback manual (tanpa AI)
     with db() as session:
         demo_data.reset_and_seed(session)
-        ai["value"] = "cache"  # kebijakan kurir dari fallback manual (tanpa AI)
         await demo_data.ensure_policies(session)
-        ai["value"] = "live"
         session.commit()
+    ai["value"] = "live"
     app = create_app()  # tanpa lifespan: DB sudah disiapkan fixture
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
                                  base_url="http://test/api/v1") as c:
@@ -59,6 +59,24 @@ def use_scripted_agent(monkeypatch, db, tracking: str = LOST, decision: dict | N
         models["evaluator"] = ScriptedLlm(model="evaluator", steps=[
             lambda: txt({"verdict": "-", "reason": "-", "evidence_ids": clip_ids(db), **decision})])
     monkeypatch.setattr(investigation_runner, "agent_factory", lambda: build_root_agent(models))
+
+
+async def start_for(client, db, tracking: str) -> str:
+    """Mulai investigasi lewat endpoint umum.
+
+    `client` sudah mengganti waktu monitoring dengan jam tetap 21 Okt (lihat
+    test_scan_flags_...); penggantian itu bocor ke tes setelahnya. Tes ini membatalkannya
+    dengan jam nyata agar aturan status resi dievaluasi seperti di produksi.
+    """
+    with db() as s:
+        ship = ship_repo.get_by_tracking(s, tracking)
+        monitoring.scan(s, shipment_ids=[ship.id], now=datetime.now(UTC))
+        s.flush()
+        s.commit()
+        sid = ship.id
+    r = await client.post("/investigations", json={"shipment_id": sid})
+    assert r.status_code == 202, r.text
+    return r.json()["investigation_id"]
 
 
 async def wait_status(c: httpx.AsyncClient, inv_id: str, *statuses: str, timeout: float = 15) -> dict:
@@ -132,8 +150,8 @@ async def test_scan_flags_scenarios_and_is_idempotent(client, monkeypatch):
     r = (await client.post("/monitoring/scan")).json()
     flagged = {a["code"] for a in r["new_anomalies"]}
     assert r["scanned"] == len(demo_data.load_mock()["shipments"])
-    # 2 SLA_EXCEEDED + 1 laporan rusak + 6 sengketa retur (lihat shipments.json)
-    assert len(r["new_anomalies"]) == 9
+    # 2 SLA_EXCEEDED + 1 laporan rusak + 8 sengketa retur (lihat shipments.json)
+    assert len(r["new_anomalies"]) == 11
     assert flagged == {"SLA_EXCEEDED", "BUYER_REPORTED_DAMAGE", "RETURN_DISPUTE"}
     # Dua resi 'lost': skenario utama (jam scan CCTV) dan satu resi SLA basi tanpa pergerakan.
     lost = sorted(a["reason_json"].get("days_stalled", a["reason_json"].get("days_late", 0))
@@ -172,7 +190,7 @@ async def test_lost_scenario_end_to_end_with_hitl(client, db, monkeypatch):
     claim_id = events[-1]["payload"]["claim_id"]
     claim = (await client.get(f"/claims/{claim_id}")).json()
     assert claim["status"] == "pending_approval" and claim["tracking_number"] == LOST
-    assert claim["claim_value"] == 450000 and claim["is_simulated"]
+    assert claim["claim_value"] == 129000 and claim["is_simulated"]
     shipment = (await client.get(f"/shipments/{claim['shipment_id']}")).json()
     assert claim["case_type"] == "lost" and claim["claim_deadline"] == shipment["claim_deadline"]
     assert (await client.get("/claims")).json()["items"][0]["id"] == claim_id
@@ -188,7 +206,7 @@ async def test_lost_scenario_end_to_end_with_hitl(client, db, monkeypatch):
     assert (await client.patch(f"/claims/{claim_id}", json={"narrative": "x" * 30})).status_code == 409
 
     metrics = (await client.get("/metrics/summary")).json()
-    assert metrics["submitted_claims"] == 1 and metrics["estimated_value_saved"] == 450000
+    assert metrics["submitted_claims"] == 1 and metrics["estimated_value_saved"] == 129000
     actions = [a["action"] for a in (await client.get("/audit-logs", params={"limit": 50})).json()]
     for expected in ("anomaly_flagged", "investigation_started", "claim_drafted",
                      "decision_made", "claim_edited", "claim_approved"):
@@ -230,9 +248,13 @@ async def test_low_confidence_needs_evidence_creates_no_claim(client, db, monkey
 
 
 async def test_seller_error_closes_case_without_claim(client, db, monkeypatch):
-    # Data mock menaruh scan resi ini di detik 300 cctv_packing_01 (menit ke-5). Fixture
-    # `client` memakai rekaman sintetis 40 dtk untuk nama yang sama, jadi arahkan scan ke
-    # detik 20 agar klip bisa dipotong dari rekaman uji itu.
+    # Seed eksplisit: tes ini mengandalkan data demo (resi `SELLER` dan CCTV-nya).
+    with db() as s:
+        demo_data.reset_and_seed(s)
+        s.commit()
+    # Data mock menaruh scan resi ini di detik 100 cctv_packing_01. Fixture `client` memakai
+    # rekaman sintetis 40 dtk untuk nama yang sama, jadi arahkan scan ke detik 20 agar klip bisa
+    # dipotong dari rekaman uji itu.
     with db() as s:
         ship = ship_repo.get_by_tracking(s, SELLER)
         scan = ship_repo.get_pack_scan(s, ship.id)
@@ -240,16 +262,17 @@ async def test_seller_error_closes_case_without_claim(client, db, monkeypatch):
         s.commit()
     use_scripted_agent(monkeypatch, db, tracking=SELLER, focus="consistency", decision={
         "decision": "seller_error", "confidence": 0.9,
-        "verdict": "warna kaos yang dikemas berbeda dari pesanan",
-        "reason": "CCTV menit ke-5 memperlihatkan kaos biru doubel dikemas, padahal pesanan biru tua (navy)."})
-    inv_id = (await client.post("/demo/scenario/wrong_item_seller")).json()["investigation_id"]
+        "verdict": "barang yang dikemas tidak sesuai pesanan",
+        "reason": "CCTV memperlihatkan barang yang dikemas berbeda dari pesanan pembeli."})
+    inv_id = await start_for(client, db, SELLER)
     inv = await wait_status(client, inv_id, "completed", "failed")
     assert inv["outcome"] == "seller_error" and inv["claim_id"] is None
     assert (await client.get("/claims")).json()["total"] == 0
     detail = (await client.get(f"/shipments/{inv['shipment_id']}")).json()
     assert detail["anomaly"] is None  # kasus ditutup dengan keputusan, tidak ditagihkan ke kurir
     # Kesimpulan agen ikut menulis status resi: kesalahan ada di penjual, bukan kurir.
-    assert detail["resolution"] == "seller" and "navy" in detail["resolution_reason"]
+    assert detail["resolution"] == "seller"
+    assert "berbeda" in detail["resolution_reason"]  # alasan Evaluator disimpan apa adanya
     logs = (await client.get("/audit-logs", params={"limit": 50})).json()
     assert "shipment_resolution_set" in {log["action"] for log in logs}
     assert (await client.get(f"/investigations/{inv_id}/buyer-request")).status_code == 409
@@ -279,6 +302,9 @@ async def test_needs_evidence_does_not_overrule_existing_resolution(client, db, 
 
 
 async def test_approve_blocked_while_resolution_points_at_seller(client, db, monkeypatch):
+    with db() as s:  # seed eksplisit (tes ini bergantung pada data demo)
+        demo_data.reset_and_seed(s)
+        s.commit()
     with db() as s:
         ship = ship_repo.get_by_tracking(s, SELLER)
         scan = ship_repo.get_pack_scan(s, ship.id)
@@ -286,9 +312,9 @@ async def test_approve_blocked_while_resolution_points_at_seller(client, db, mon
         s.commit()
     use_scripted_agent(monkeypatch, db, tracking=SELLER, focus="consistency", decision={
         "decision": "seller_error", "confidence": 0.9,
-        "verdict": "warna kaos yang dikemas berbeda dari pesanan",
-        "reason": "CCTV memperlihatkan kaos berbeda dari pesanan."})
-    inv_id = (await client.post("/demo/scenario/wrong_item_seller")).json()["investigation_id"]
+        "verdict": "barang yang dikemas tidak sesuai pesanan",
+        "reason": "CCTV memperlihatkan barang berbeda dari pesanan."})
+    inv_id = await start_for(client, db, SELLER)
     inv = await wait_status(client, inv_id, "completed")
     with db() as s:  # draf dibuat manual: jalur ini hanya menguji pagar di approve
         from app.agents.outcome import InvestigationOutcome

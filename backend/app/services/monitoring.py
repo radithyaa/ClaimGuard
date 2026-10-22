@@ -18,7 +18,9 @@ from app.services import audit
 
 IN_TRANSIT = ("created", "picked_up", "in_transit", "out_for_delivery")
 _DAMAGE = re.compile(r"\b(rusak|pecah|retak|penyok|patah|basah|sobek|robek|hancur)\b", re.IGNORECASE)
-_DISPUTE = re.compile(r"\b(kosong|tidak sesuai|beda|berbeda|kurang|hilang isi|bukan barang)\b", re.IGNORECASE)
+_DISPUTE = re.compile(
+    r"\b(kosong|tidak sesuai|tidak ada|beda|berbeda|kurang|hilang isi|bukan barang)\b", re.IGNORECASE
+)
 
 
 @dataclass(frozen=True)
@@ -72,10 +74,16 @@ def evaluate(
         return Flag("BUYER_REPORTED_DAMAGE", "damaged", "medium", {
             "summary": "Pembeli melaporkan barang rusak", "matched": _DAMAGE.search(report).group(0),
         })
+    # Retur diperiksa sebelum kerusakan: pembeli yang minta retur karena barang rusak/isi kurang
+    # harus sampai ke penyelidikan bukti, bukan berhenti di alarm kerusakan sederhana.
     if shipment.status == "returned" and _DISPUTE.search(report):
         return Flag("RETURN_DISPUTE", "return_fraud", "high", {
             "summary": "Pembeli mengklaim isi paket kosong/tidak sesuai; perlu dicocokkan dengan bukti packing",
             "matched": _DISPUTE.search(report).group(0),
+        })
+    if _DAMAGE.search(report):  # retur/status lain yang tetap melaporkan kerusakan
+        return Flag("BUYER_REPORTED_DAMAGE", "damaged", "medium", {
+            "summary": "Pembeli melaporkan barang rusak", "matched": _DAMAGE.search(report).group(0),
         })
     return None
 
