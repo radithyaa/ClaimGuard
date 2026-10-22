@@ -15,6 +15,32 @@ function toSummary({ tracking_events, anomaly, buyer_report, latest_investigatio
   return s;
 }
 
+const DAY_MS = 86400e3;
+const lastActivity = (s: ShipmentDetail) =>
+  Math.max(new Date(s.sla_deadline).getTime(), ...s.tracking_events.map((e) => new Date(e.occurred_at).getTime()));
+
+/** Ringkasan KPI dihitung dari data, supaya angka konsisten dengan tabel & antrian. */
+function metricsSummary(): MetricsSummary {
+  const dayKey = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+  const days = [...Array(7)].map((_, i) => dayKey(Date.now() - (6 - i) * DAY_MS));
+  const active = db.shipments.filter((s) => s.active_anomaly);
+  const pending = db.claims.filter((c) => c.status === "pending_approval");
+  return {
+    // Anomali yang sudah diputuskan tidak lagi dihitung sebagai aktif
+    active_anomalies: db.shipments.filter((s) => s.active_anomaly && !s.latest_investigation?.outcome && s.anomaly?.status !== "resolved").length,
+    pending_claims: pending.length,
+    submitted_claims: db.claims.filter((c) => c.status === "submitted").length,
+    estimated_value_saved: active.reduce((n, s) => n + s.item_value, 0),
+    avg_processing_sec: 24.6,
+    trend: days.map((date) => ({
+      date,
+      anomalies: active.filter((s) => dayKey(lastActivity(s)) === date).length,
+      claims: db.claims.filter((c) => dayKey(new Date(c.created_at).getTime()) === date).length,
+    })),
+    is_simulated: true,
+  };
+}
+
 type Opts = { query?: Record<string, unknown>; body?: unknown };
 
 export async function mockRequest<T>(method: string, path: string, { query = {}, body }: Opts): Promise<T> {
@@ -40,7 +66,11 @@ export async function mockRequest<T>(method: string, path: string, { query = {},
         (s) =>
           (!q("status") || s.status === q("status")) &&
           (!q("courier") || s.courier === q("courier")) &&
-          (!term || s.tracking_number.toLowerCase().includes(term) || s.destination.toLowerCase().includes(term)),
+          (!term ||
+            s.tracking_number.toLowerCase().includes(term) ||
+            s.destination.toLowerCase().includes(term) ||
+            s.origin.toLowerCase().includes(term) ||
+            s.item_name.toLowerCase().includes(term)),
       );
       const limit = Number(q("limit") ?? 20);
       const offset = Number(q("offset") ?? 0);
@@ -49,7 +79,7 @@ export async function mockRequest<T>(method: string, path: string, { query = {},
     case "GET /shipments/:id": {
       const s = db.shipments.find((x) => x.id === id);
       if (!s) throw new ApiError(404, "not_found", "Resi tidak ditemukan");
-      return { ...s, latest_claim: db.claims.find((c) => c.shipment_id === s.id) ?? null } as T;
+      return s as T;
     }
     case "POST /monitoring/scan":
       return { scanned: db.shipments.length, new_anomalies: [] } as T;
@@ -73,7 +103,9 @@ export async function mockRequest<T>(method: string, path: string, { query = {},
       return { status: "cancelling" } as T;
     case "GET /claims": {
       const rows = db.claims.filter((c) => !q("status") || c.status === q("status"));
-      return { items: rows, total: rows.length, limit: 20, offset: 0 } as T;
+      const limit = Number(q("limit") ?? 20);
+      const offset = Number(q("offset") ?? 0);
+      return { items: rows.slice(offset, offset + limit), total: rows.length, limit, offset } as T;
     }
     case "GET /claims/:id":
       return mockClaimGet(id) as T;
@@ -86,7 +118,7 @@ export async function mockRequest<T>(method: string, path: string, { query = {},
     case "POST /demo/reset":
       mockClaimsReset();
       mockRunsReset();
-      return { shipments: db.shipments.length, media: 3, missing_media: [] } as T;
+      return { shipments: db.shipments.length, media: 5, missing_media: [] } as T;
     case "POST /demo/scenario/:id": {
       const sid = SCENARIO_SHIPMENT[id];
       if (!sid) throw new ApiError(422, "validation_error", "Skenario tidak dikenal");
@@ -97,24 +129,13 @@ export async function mockRequest<T>(method: string, path: string, { query = {},
       return { status: "ok", db: "ok", ai_mode: "cache", storage: "local" } as T;
     case "GET /couriers/policies":
       return db.policies as T;
-    case "GET /metrics/summary": {
-      const summary: MetricsSummary = {
-        active_anomalies: db.shipments.filter((s) => s.active_anomaly).length,
-        pending_claims: db.claims.filter((c) => c.status === "pending_approval").length,
-        submitted_claims: db.claims.filter((c) => c.status === "submitted").length,
-        estimated_value_saved: db.claims.filter((c) => c.status === "pending_approval").reduce((n, c) => n + c.claim_value, 0),
-        avg_processing_sec: 24.6,
-        trend: ["15", "16", "17", "18", "19", "20", "21"].map((day, i) => ({
-          date: `2026-10-${day}`,
-          anomalies: [1, 0, 2, 1, 3, 1, 3][i],
-          claims: [0, 0, 1, 1, 1, 0, 1][i],
-        })),
-        is_simulated: true,
-      };
-      return summary as T;
+    case "GET /metrics/summary":
+      return metricsSummary() as T;
+    case "GET /audit-logs": {
+      const entity = q("entity");
+      const rows = db.auditLogs.filter((l) => !entity || l.entity === entity);
+      return rows.slice(0, Number(q("limit") ?? 10)) as T;
     }
-    case "GET /audit-logs":
-      return db.auditLogs.slice(0, Number(q("limit") ?? 10)) as T;
     case "GET /settings":
       return db.settings as T;
     case "PATCH /settings":

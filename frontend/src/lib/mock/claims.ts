@@ -1,23 +1,66 @@
 // Mock detail & transisi klaim (HITL). Meniru claim_service backend: hanya status
 // pending_approval yang boleh diubah; selain itu 409 invalid_status.
 import { ApiError } from "@/lib/api-client";
-import type { ClaimDetail } from "@/types/api";
+import type { ClaimDetail, Evidence } from "@/types/api";
 
 import * as db from "./data";
 import { EVIDENCE } from "./investigation";
 
-const NARRATIVE =
-  "Dengan hormat, kami mengajukan klaim paket hilang untuk resi JNE0012345678. Paket berisi 1 pasang Sepatu kulit pria senilai Rp450.000, " +
-  "dikemas dan dipindai di meja packing pada 15 Okt 2026 pukul 09.10 WIB, lalu diserahkan ke kurir pukul 11.00 WIB. Sejak 16 Okt 2026 status paket " +
-  "tidak bergerak di hub transit Semarang melewati batas SLA. Rekaman packing dan riwayat resi terlampir.";
-
 const details = new Map<string, ClaimDetail>();
 const initialStatus = new Map(db.claims.map((c) => [c.id, c.status]));
+
+const COURIER_NAME = { jne: "JNE", jnt: "J&T", sicepat: "SiCepat" } as const;
 
 /** POST /demo/reset: kembalikan status & draf klaim ke kondisi awal. */
 export function mockClaimsReset() {
   details.clear();
-  for (const c of db.claims) c.status = initialStatus.get(c.id) ?? c.status;
+  for (const c of db.claims) {
+    c.status = initialStatus.get(c.id) ?? c.status;
+    const s = db.shipments.find((x) => x.id === c.shipment_id);
+    if (s) s.latest_claim = { id: c.id, status: c.status };
+  }
+}
+
+/** Draf generik untuk klaim yang tidak punya seed khusus (klaim baru dari skenario live). */
+function genericDraft(id: string): Pick<ClaimDetail, "narrative" | "draft" | "draft_issues" | "decision_reason"> {
+  const c = db.claims.find((x) => x.id === id)!;
+  const s = db.shipments.find((x) => x.id === c.shipment_id)!;
+  const policy = db.policies.find((p) => p.courier === s.courier);
+  const lost = c.case_type !== "damaged";
+  const draft: ClaimDetail["draft"] = {
+    title: `Klaim ${lost ? "paket hilang" : "barang rusak"} ${s.tracking_number}`,
+    tracking_number: s.tracking_number,
+    courier: s.courier,
+    claim_type: lost ? "lost" : "damaged",
+    chronology: s.tracking_events
+      .map((e) => ({ at: e.occurred_at, event: `${e.status} · ${e.location}` }))
+      .sort((a, b) => a.at.localeCompare(b.at)),
+    attachments: ["evd-001"],
+    requested_compensation: c.claim_value,
+    policy_notes: [
+      ...(policy ? [`Diajukan dalam batas ${policy.claim_window_days} hari`] : []),
+      "Video packing tersedia",
+      "Nilai barang tidak melebihi batas ganti rugi",
+    ],
+  };
+  return {
+    narrative:
+      `Dengan hormat, kami mengajukan klaim ${lost ? "paket hilang" : "barang rusak"} untuk resi ${s.tracking_number}. ` +
+      `Paket berisi ${s.item_name} senilai ${new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(c.claim_value)}, ` +
+      `dikemas dan dipindai di meja packing, lalu diserahkan ke ${COURIER_NAME[s.courier]}. Rekaman packing dan riwayat resi terlampir.`,
+    draft,
+    draft_issues: [],
+    decision_reason: lost
+      ? "Rekaman packing menunjukkan barang dikemas dan label resi cocok; pelacakan berhenti setelah hub transit melewati batas SLA."
+      : "Video unboxing menunjukkan kerusakan saat kardus dibuka; rekaman packing tidak menemukan benturan saat pengemasan.",
+  };
+}
+
+/** Bukti klaim: klip CCTV packing yang sama dengan investigasi asal resi. */
+function evidenceFor(shipmentId: string, investigationId: string, claimId: string): Evidence[] {
+  const s = db.shipments.find((x) => x.id === shipmentId);
+  if (!s?.latest_investigation || s.latest_investigation.outcome === "needs_evidence") return [];
+  return [{ ...EVIDENCE, id: `evd-${claimId.slice(-3)}`, investigation_id: investigationId }];
 }
 
 function detail(id: string): ClaimDetail {
@@ -26,33 +69,26 @@ function detail(id: string): ClaimDetail {
   const c = db.claims.find((x) => x.id === id);
   if (!c) throw new ApiError(404, "not_found", "Klaim tidak ditemukan");
   const s = db.shipments.find((x) => x.id === c.shipment_id)!;
+  const seed = db.claimSeeds[id];
+  const picked = seed ?? genericDraft(id);
+  const investigationId = `inv-mock-${s.id}`;
+  const submitted = c.status === "submitted";
   const d: ClaimDetail = {
     ...c,
-    investigation_id: `inv-mock-${s.id}`,
-    narrative: NARRATIVE,
-    draft: {
-      title: `Klaim paket hilang ${s.tracking_number}`,
-      tracking_number: s.tracking_number,
-      courier: s.courier,
-      claim_type: "lost",
-      chronology: s.tracking_events
-        .map((e) => ({ at: e.occurred_at, event: `${e.status} · ${e.location}` }))
-        .sort((a, b) => a.at.localeCompare(b.at)),
-      attachments: ["evd-001"],
-      requested_compensation: c.claim_value,
-      policy_notes: ["Diajukan dalam batas 14 hari", "Video packing tersedia", "Nilai barang tidak melebihi batas ganti rugi"],
-    },
-    draft_issues: [],
-    decision_reason: "Rekaman packing menunjukkan barang dikemas dan label resi cocok; pelacakan berhenti di hub transit lebih dari batas SLA.",
+    investigation_id: investigationId,
+    narrative: picked.narrative,
+    draft: picked.draft,
+    draft_issues: picked.draft_issues,
+    decision_reason: picked.decision_reason,
     item_name: s.item_name,
     item_value: s.item_value,
+    // Tanggal dasar: investigasi selesai, draf dibuat, lalu diputuskan admin
     updated_at: c.created_at,
-    // Klaim seed yang sudah diputuskan diberi jejak pengiriman/penolakan yang masuk akal
-    submitted_at: c.status === "submitted" ? new Date(new Date(c.created_at).getTime() + 3600e3).toISOString() : null,
-    submitted_by: c.status === "submitted" ? "admin" : null,
-    submission_ref: c.status === "submitted" ? `SIM-${c.courier.toUpperCase()}-${c.id.slice(-3)}001` : null,
-    reject_reason: c.status === "rejected" ? "Bukti packing kurang jelas, perlu dicek manual" : null,
-    evidence: [{ ...EVIDENCE, investigation_id: `inv-mock-${s.id}` }],
+    submitted_at: submitted ? new Date(new Date(c.created_at).getTime() + 3600e3).toISOString() : null,
+    submitted_by: submitted ? (seed?.submitted_by ?? "admin") : null,
+    submission_ref: submitted ? (seed?.submission_ref ?? `SIM-${c.courier.toUpperCase()}-${c.id.slice(-3)}001`) : null,
+    reject_reason: c.status === "rejected" ? (seed?.reject_reason ?? "Bukti packing kurang jelas, perlu dicek manual") : null,
+    evidence: evidenceFor(s.id, investigationId, id),
     courier_policy: db.policies.find((p) => p.courier === s.courier) ?? null,
   };
   details.set(id, d);
@@ -66,6 +102,8 @@ function transition(id: string, patch: Partial<ClaimDetail>): ClaimDetail {
   // Sinkronkan ringkasan agar antrian & KPI ikut berubah
   const summary = db.claims.find((c) => c.id === id);
   if (summary) summary.status = d.status;
+  const s = db.shipments.find((x) => x.id === d.shipment_id);
+  if (s?.latest_claim?.id === id) s.latest_claim = { id, status: d.status };
   return { ...d };
 }
 

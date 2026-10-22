@@ -1,53 +1,153 @@
 // Mock investigasi live: skrip event SSE yang diputar ulang menurut waktu sejak run dimulai,
 // sehingga refresh/reconnect tetap konsisten (meniru replay Last-Event-ID backend).
-import type { Evidence, InvestigationEvent, InvestigationView } from "@/types/api";
+import type { Evidence, InvestigationEvent, InvestigationView, ShipmentDetail } from "@/types/api";
 
 import * as db from "./data";
 
 type Step = { at: number; type: InvestigationEvent["type"]; agent?: string; payload: Record<string, unknown>; source?: "live" | "cache" };
 
-const SCRIPT: Step[] = [
+const COMMON_START: Step[] = [
   { at: 0, type: "status", payload: { status: "running" } },
-  { at: 600, type: "thought", agent: "investigator", payload: { text: "Paket tidak bergerak 3 hari sejak hub transit. Mengumpulkan konteks kasus." } },
-  { at: 1200, type: "tool_start", agent: "investigator", payload: { tool: "get_case_context", args: { shipment_id: "shp-001" } } },
+  { at: 600, type: "thought", agent: "investigator", payload: { text: "" } },
+  { at: 1200, type: "tool_start", agent: "investigator", payload: { tool: "get_case_context", args: {} } },
   { at: 1800, type: "tool_end", agent: "investigator", payload: { tool: "get_case_context", status: "ok", duration_ms: 420 } },
-  { at: 2400, type: "tool_start", agent: "investigator", payload: { tool: "clip_cctv_for_shipment", args: { window_sec: 40 } } },
-  { at: 2600, type: "tool_start", agent: "investigator", payload: { tool: "get_courier_policy", args: { courier: "jne" } } },
-  { at: 3800, type: "tool_end", agent: "investigator", payload: { tool: "get_courier_policy", status: "ok", duration_ms: 1300 }, source: "cache" },
-  { at: 4600, type: "tool_end", agent: "investigator", payload: { tool: "clip_cctv_for_shipment", status: "ok", duration_ms: 2100, result: { evidence_id: "evd-001" } } },
-  { at: 5200, type: "tool_start", agent: "investigator", payload: { tool: "analyze_media_for", args: { focus: "packing" } } },
-  { at: 9500, type: "tool_end", agent: "investigator", payload: { tool: "analyze_media_for", status: "ok", duration_ms: 4300 }, source: "live" },
-  { at: 10000, type: "thought", agent: "investigator", payload: { text: "Barang terlihat dikemas dan label resi terbaca. Paket diserahkan ke kurir dalam kondisi baik." } },
-  { at: 11500, type: "decision", agent: "evaluator", payload: { decision: "claim", outcome: "claim_drafted", confidence: 0.86, verdict: "Paket hilang setelah diserahkan ke kurir", reason: "Rekaman packing menunjukkan barang dikemas dan label resi cocok; pelacakan berhenti di hub transit lebih dari batas SLA.", evidence_ids: ["evd-001"], missing_evidence: [] } },
-  { at: 12500, type: "thought", agent: "drafter", payload: { text: "Draf klaim selesai disusun." } },
-  { at: 13000, type: "done", payload: { outcome: "claim_drafted", claim_id: "clm-001", duration_ms: 13000 } },
 ];
 
-const COMMON_START: Step[] = SCRIPT.slice(0, 4);
+const COURIER_NAME = { jne: "JNE", jnt: "J&T", sicepat: "SiCepat" } as const;
+const rupiah = (n: number) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
+const lastEvent = (s: ShipmentDetail) => [...s.tracking_events].sort((a, b) => a.occurred_at.localeCompare(b.occurred_at)).at(-1);
 
-const SELLER_SCRIPT: Step[] = [
-  ...COMMON_START,
-  { at: 2400, type: "tool_start", agent: "investigator", payload: { tool: "clip_cctv_for_shipment", args: { window_sec: 40 } } },
-  { at: 4400, type: "tool_end", agent: "investigator", payload: { tool: "clip_cctv_for_shipment", status: "ok", duration_ms: 2000, result: { evidence_id: "evd-011" } } },
-  { at: 5000, type: "tool_start", agent: "investigator", payload: { tool: "analyze_media_for", args: { focus: "packing" } } },
-  { at: 9000, type: "tool_end", agent: "investigator", payload: { tool: "analyze_media_for", status: "ok", duration_ms: 4000 }, source: "live" },
-  { at: 9400, type: "tool_start", agent: "investigator", payload: { tool: "get_courier_policy", args: { courier: "sicepat" } } },
-  { at: 10200, type: "tool_end", agent: "investigator", payload: { tool: "get_courier_policy", status: "ok", duration_ms: 800 }, source: "cache" },
-  { at: 10600, type: "thought", agent: "investigator", payload: { text: "Rekaman packing memperlihatkan kaos merah ukuran M yang dikemas, sedangkan pesanan tertulis kaos hitam ukuran L." } },
-  { at: 12000, type: "decision", agent: "evaluator", payload: { decision: "seller_error", outcome: "seller_error", confidence: 0.9, verdict: "Barang yang dikemas berbeda dari pesanan", reason: "CCTV meja packing detik 0:30 memperlihatkan kaos merah ukuran M dimasukkan ke kardus, padahal pesanan kaos hitam ukuran L. Ketidaksesuaian terjadi saat pengemasan di gudang, jadi klaim ke kurir tidak diajukan. Sebaiknya retur pembeli ditindaklanjuti.", evidence_ids: ["evd-011"], missing_evidence: [] } },
-  { at: 12400, type: "done", payload: { outcome: "seller_error", claim_id: null, duration_ms: 12400 } },
-];
+/** Skrip A (default): paket hilang -> klaim. Isi resi diambil dari data, bukan hardcode shp-001. */
+function lostScript(s: ShipmentDetail): Step[] {
+  const last = lastEvent(s);
+  const evd = `evd-${s.id.slice(-3)}`;
+  return [
+    COMMON_START[0],
+    {
+      at: 600,
+      type: "thought",
+      agent: "investigator",
+      payload: { text: `Resi ${s.tracking_number} tidak bergerak sejak ${last?.location ?? s.destination}. Mengumpulkan konteks kasus.` },
+    },
+    COMMON_START[2],
+    COMMON_START[3],
+    { at: 2400, type: "tool_start", agent: "investigator", payload: { tool: "clip_cctv_for_shipment", args: { window_sec: 40 } } },
+    { at: 2600, type: "tool_start", agent: "investigator", payload: { tool: "get_courier_policy", args: { courier: s.courier } } },
+    { at: 3800, type: "tool_end", agent: "investigator", payload: { tool: "get_courier_policy", status: "ok", duration_ms: 1300 }, source: "cache" },
+    { at: 4600, type: "tool_end", agent: "investigator", payload: { tool: "clip_cctv_for_shipment", status: "ok", duration_ms: 2100, result: { evidence_id: evd } } },
+    { at: 5200, type: "tool_start", agent: "investigator", payload: { tool: "analyze_media_for", args: { focus: "packing" } } },
+    { at: 9500, type: "tool_end", agent: "investigator", payload: { tool: "analyze_media_for", status: "ok", duration_ms: 4300 }, source: "live" },
+    { at: 10000, type: "thought", agent: "investigator", payload: { text: `${s.item_name} terlihat dikemas dan label resi terbaca. Paket diserahkan ke kurir dalam kondisi baik.` } },
+    {
+      at: 11500,
+      type: "decision",
+      agent: "evaluator",
+      payload: {
+        decision: "claim",
+        outcome: "claim_drafted",
+        confidence: 0.86,
+        verdict: "Paket hilang setelah diserahkan ke kurir",
+        reason: "Rekaman packing menunjukkan barang dikemas dan label resi cocok; pelacakan berhenti melewati batas SLA.",
+        evidence_ids: [evd],
+        missing_evidence: [],
+      },
+    },
+    { at: 12500, type: "thought", agent: "drafter", payload: { text: "Draf klaim selesai disusun." } },
+    { at: 13000, type: "done", payload: { outcome: "claim_drafted", claim_id: s.latest_claim?.id ?? null, duration_ms: 13000 } },
+  ];
+}
 
-const NO_CCTV_SCRIPT: Step[] = [
-  ...COMMON_START,
-  { at: 2400, type: "tool_start", agent: "investigator", payload: { tool: "clip_cctv_for_shipment", args: { window_sec: 40 } } },
-  { at: 3600, type: "tool_end", agent: "investigator", payload: { tool: "clip_cctv_for_shipment", status: "error", duration_ms: 1200 } },
-  { at: 4000, type: "tool_start", agent: "investigator", payload: { tool: "get_courier_policy", args: { courier: "jne" } } },
-  { at: 4800, type: "tool_end", agent: "investigator", payload: { tool: "get_courier_policy", status: "ok", duration_ms: 800 }, source: "cache" },
-  { at: 5200, type: "thought", agent: "investigator", payload: { text: "Rekaman meja packing untuk resi ini tidak ditemukan, jadi isi paket saat dikemas tidak bisa dibuktikan." } },
-  { at: 6600, type: "decision", agent: "evaluator", payload: { decision: "needs_evidence", outcome: "needs_evidence", confidence: 0.55, verdict: "Bukti isi paket belum ada", reason: "Paket tertahan melewati batas SLA, tetapi rekaman packing tidak tersedia. Tanpa bukti isi paket, klaim ke JNE berisiko ditolak.", evidence_ids: [], missing_evidence: ["Foto atau video saat barang dikemas", "Bukti nilai barang (invoice pesanan)"] } },
-  { at: 7000, type: "done", payload: { outcome: "needs_evidence", claim_id: null, duration_ms: 7000 } },
-];
+/** Skrip B: barang rusak -> klaim dengan temuan visual bertingkat. */
+function damagedScript(s: ShipmentDetail): Step[] {
+  const evd = `evd-${s.id.slice(-3)}`;
+  return [
+    COMMON_START[0],
+    { at: 600, type: "thought", agent: "investigator", payload: { text: `Pembeli melaporkan ${s.item_name} rusak untuk resi ${s.tracking_number}. Memeriksa rekaman packing dan unboxing.` } },
+    COMMON_START[2],
+    COMMON_START[3],
+    { at: 2200, type: "tool_start", agent: "investigator", payload: { tool: "list_media_for_shipment", args: { kinds: ["cctv", "unboxing"] } } },
+    { at: 3000, type: "tool_end", agent: "investigator", payload: { tool: "list_media_for_shipment", status: "ok", duration_ms: 800, result: { cctv: 1, unboxing: 1 } } },
+    { at: 3400, type: "tool_start", agent: "investigator", payload: { tool: "clip_cctv_for_shipment", args: { window_sec: 40 } } },
+    { at: 4000, type: "tool_start", agent: "investigator", payload: { tool: "get_courier_policy", args: { courier: s.courier } } },
+    { at: 4800, type: "tool_end", agent: "investigator", payload: { tool: "get_courier_policy", status: "ok", duration_ms: 900 }, source: "cache" },
+    { at: 5400, type: "tool_end", agent: "investigator", payload: { tool: "clip_cctv_for_shipment", status: "ok", duration_ms: 2000, result: { evidence_id: evd } } },
+    { at: 6000, type: "tool_start", agent: "investigator", payload: { tool: "analyze_media_for", args: { focus: "unboxing" } } },
+    { at: 10800, type: "tool_end", agent: "investigator", payload: { tool: "analyze_media_for", status: "ok", duration_ms: 4800 }, source: "live" },
+    { at: 11200, type: "thought", agent: "investigator", payload: { text: "Kardus penyok di sudut dan pembungkus sobek terlihat sejak sebelum segel dibuka; kerusakan terjadi dalam perjalanan." } },
+    {
+      at: 12400,
+      type: "decision",
+      agent: "evaluator",
+      payload: {
+        decision: "claim",
+        outcome: "claim_drafted",
+        confidence: 0.88,
+        verdict: "Barang rusak saat pengiriman",
+        reason: `${s.item_name} senilai ${rupiah(s.item_value)} rusak saat diterima; rekaman unboxing menunjukkan kerusakan sudah ada sebelum kardus dibuka.`,
+        evidence_ids: [evd],
+        missing_evidence: [],
+      },
+    },
+    { at: 13200, type: "thought", agent: "drafter", payload: { text: "Draf klaim rusak disusun dengan lampiran temuan visual." } },
+    { at: 13600, type: "done", payload: { outcome: "claim_drafted", claim_id: s.latest_claim?.id ?? null, duration_ms: 13600 } },
+  ];
+}
+
+/** Skrip C2: penjual salah kirim -> seller_error, tanpa klaim ke kurir. */
+function sellerScript(s: ShipmentDetail): Step[] {
+  return [
+    ...COMMON_START,
+    { at: 2400, type: "tool_start", agent: "investigator", payload: { tool: "clip_cctv_for_shipment", args: { window_sec: 40 } } },
+    { at: 4400, type: "tool_end", agent: "investigator", payload: { tool: "clip_cctv_for_shipment", status: "ok", duration_ms: 2000, result: { evidence_id: "evd-011" } } },
+    { at: 5000, type: "tool_start", agent: "investigator", payload: { tool: "analyze_media_for", args: { focus: "packing" } } },
+    { at: 9000, type: "tool_end", agent: "investigator", payload: { tool: "analyze_media_for", status: "ok", duration_ms: 4000 }, source: "live" },
+    { at: 9400, type: "tool_start", agent: "investigator", payload: { tool: "get_courier_policy", args: { courier: s.courier } } },
+    { at: 10200, type: "tool_end", agent: "investigator", payload: { tool: "get_courier_policy", status: "ok", duration_ms: 800 }, source: "cache" },
+    { at: 10600, type: "thought", agent: "investigator", payload: { text: "Rekaman packing memperlihatkan kaos merah ukuran M yang dikemas, sedangkan pesanan tertulis kaos hitam ukuran L." } },
+    {
+      at: 12000,
+      type: "decision",
+      agent: "evaluator",
+      payload: {
+        decision: "seller_error",
+        outcome: "seller_error",
+        confidence: 0.9,
+        verdict: "Barang yang dikemas berbeda dari pesanan",
+        reason: "CCTV meja packing detik 0:30 memperlihatkan kaos merah ukuran M dimasukkan ke kardus, padahal pesanan kaos hitam ukuran L. Ketidaksesuaian terjadi saat pengemasan di gudang, jadi klaim ke kurir tidak diajukan. Sebaiknya retur pembeli ditindaklanjuti.",
+        evidence_ids: ["evd-011"],
+        missing_evidence: [],
+      },
+    },
+    { at: 12400, type: "done", payload: { outcome: "seller_error", claim_id: null, duration_ms: 12400 } },
+  ];
+}
+
+/** Skrip D: tidak ada rekaman CCTV -> needs_evidence (F6). */
+function noCctvScript(s: ShipmentDetail): Step[] {
+  return [
+    ...COMMON_START,
+    { at: 2400, type: "tool_start", agent: "investigator", payload: { tool: "clip_cctv_for_shipment", args: { window_sec: 40 } } },
+    { at: 3600, type: "tool_end", agent: "investigator", payload: { tool: "clip_cctv_for_shipment", status: "error", duration_ms: 1200 } },
+    { at: 4000, type: "tool_start", agent: "investigator", payload: { tool: "get_courier_policy", args: { courier: s.courier } } },
+    { at: 4800, type: "tool_end", agent: "investigator", payload: { tool: "get_courier_policy", status: "ok", duration_ms: 800 }, source: "cache" },
+    { at: 5200, type: "thought", agent: "investigator", payload: { text: "Rekaman meja packing untuk resi ini tidak ditemukan, jadi isi paket saat dikemas tidak bisa dibuktikan." } },
+    {
+      at: 6600,
+      type: "decision",
+      agent: "evaluator",
+      payload: {
+        decision: "needs_evidence",
+        outcome: "needs_evidence",
+        confidence: 0.55,
+        verdict: "Bukti isi paket belum ada",
+        reason: `Paket tertahan melewati batas SLA, tetapi rekaman packing tidak tersedia. Tanpa bukti isi paket, klaim ke ${COURIER_NAME[s.courier]} berisiko ditolak.`,
+        evidence_ids: [],
+        missing_evidence: ["Foto atau video saat barang dikemas", "Bukti nilai barang (invoice pesanan)"],
+      },
+    },
+    { at: 7000, type: "done", payload: { outcome: "needs_evidence", claim_id: null, duration_ms: 7000 } },
+  ];
+}
 
 const SELLER_EVIDENCE_FINDINGS = {
   verdict: "item_packed",
@@ -64,12 +164,12 @@ const SELLER_EVIDENCE_FINDINGS = {
   ],
 };
 
-/** Skrip per resi: C2 -> seller_error, shp-004 (tanpa CCTV) -> needs_evidence, lainnya -> klaim. */
-function scriptFor(id: string): Step[] {
-  const sid = id.replace(/^inv-mock-/, "");
-  if (sid === "shp-011") return SELLER_SCRIPT;
-  if (sid === "shp-004") return NO_CCTV_SCRIPT;
-  return SCRIPT;
+/** Skrip per resi: C2 -> seller_error, D (tanpa CCTV) -> needs_evidence, rusak -> klaim, lainnya -> klaim. */
+function scriptFor(s: ShipmentDetail): Step[] {
+  if (s.id === "shp-011") return sellerScript(s);
+  if (s.id === "shp-004") return noCctvScript(s);
+  if (s.anomaly?.case_type === "damaged") return damagedScript(s);
+  return lostScript(s);
 }
 
 export const EVIDENCE: Evidence = {
@@ -96,6 +196,33 @@ export const EVIDENCE: Evidence = {
   },
 };
 
+/** Analisis media default, memakai barang & resi sebenarnya. */
+function evidenceFor(s: ShipmentDetail, investigationId: string): Evidence {
+  if (s.id === "shp-011") {
+    return { ...EVIDENCE, id: "evd-011", investigation_id: investigationId, clip_start_sec: 20, clip_duration_sec: 25, analysis_json: SELLER_EVIDENCE_FINDINGS };
+  }
+  if (s.id === "shp-001") return { ...EVIDENCE, investigation_id: investigationId };
+  return {
+    ...EVIDENCE,
+    id: `evd-${s.id.slice(-3)}`,
+    investigation_id: investigationId,
+    analysis_json: {
+      verdict: "item_packed",
+      confidence: 0.88,
+      findings: [
+        { description: `${s.item_name} dimasukkan ke kotak`, severity: "info" },
+        { description: `Label resi ${s.tracking_number} terbaca dan cocok dengan pesanan`, severity: "info" },
+        { description: "Kotak disegel dan diletakkan di area serah terima", severity: "info" },
+      ],
+      timestamp_evidence: [
+        { t_sec: 12, label: "Barang masuk kotak" },
+        { t_sec: 18, label: "Scan label resi" },
+        { t_sec: 31, label: "Kotak disegel" },
+      ],
+    },
+  };
+}
+
 const runs = new Map<string, { startedAt: number; cancelledAt?: number }>();
 
 function run(id: string) {
@@ -103,7 +230,7 @@ function run(id: string) {
   return runs.get(id)!;
 }
 
-function shipmentFor(id: string) {
+function shipmentFor(id: string): ShipmentDetail {
   const sid = id.replace(/^inv-mock-/, "");
   return db.shipments.find((s) => s.id === sid) ?? db.shipments[0];
 }
@@ -112,7 +239,7 @@ function shipmentFor(id: string) {
 export function eventsSoFar(id: string): InvestigationEvent[] {
   const r = run(id);
   const now = r.cancelledAt ?? Date.now();
-  const out: InvestigationEvent[] = scriptFor(id).filter((s) => r.startedAt + s.at <= now).map((s, i) => ({
+  const out: InvestigationEvent[] = scriptFor(shipmentFor(id)).filter((s) => r.startedAt + s.at <= now).map((s, i) => ({
     seq: i + 1,
     investigation_id: id,
     type: s.type,
@@ -136,11 +263,7 @@ export function mockView(id: string): InvestigationView {
   const r = run(id);
   const end = events.find((e) => e.type === "done")?.payload;
   const analyzed = events.some((e) => e.type === "tool_end" && e.payload.tool === "analyze_media_for");
-  const evidence: Evidence[] = !analyzed
-    ? []
-    : s.id === "shp-011"
-      ? [{ ...EVIDENCE, id: "evd-011", investigation_id: id, clip_start_sec: 20, clip_duration_sec: 25, analysis_json: SELLER_EVIDENCE_FINDINGS }]
-      : [{ ...EVIDENCE, investigation_id: id }];
+  const evidence: Evidence[] = analyzed ? [evidenceFor(s, id)] : [];
   return {
     id,
     shipment_id: s.id,
@@ -203,7 +326,7 @@ export function mockBuyerRequest(id: string) {
   const s = shipmentFor(id);
   const decision = eventsSoFar(id).find((e) => e.type === "decision")?.payload;
   const missing = (decision?.missing_evidence as string[] | undefined) ?? [];
-  const courier = { jne: "JNE", jnt: "J&T", sicepat: "SiCepat" }[s.courier];
+  const courier = COURIER_NAME[s.courier];
   const deadline = s.claim_deadline;
   const tgl = deadline
     ? new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Jakarta" }).format(new Date(deadline))
