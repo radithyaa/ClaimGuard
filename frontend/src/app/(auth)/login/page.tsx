@@ -6,7 +6,13 @@ import { Suspense } from "react";
 import { LoginForm } from "@/components/auth/login-form";
 import { getServerSession } from "@/lib/server-session";
 
-export const metadata: Metadata = { title: "Masuk" };
+export const metadata: Metadata = {
+  title: "Masuk",
+  description:
+    "Masuk ke ClaimGuard: agen AI yang mendeteksi paket bermasalah, memotong rekaman CCTV packing, " +
+    "dan menyiapkan draf klaim kurir untuk Anda setujui.",
+  alternates: { canonical: "/login" },
+};
 // Tanggal hari ini harus dihitung per request, bukan saat build
 export const dynamic = "force-dynamic";
 
